@@ -1,0 +1,8 @@
+// Test instrument for the Phase 0 smoke test.
+// It uses sfizz's built-in sine generator, so it needs no sample files.
+
+<region>
+sample=*sine
+ampeg_attack=0.005
+ampeg_release=0.25
+volume=0

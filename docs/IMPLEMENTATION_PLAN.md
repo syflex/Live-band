@@ -7,6 +7,37 @@ decisions that the spec leaves open.
 
 ---
 
+## 0. Decisions from the project owner (14 October 2026)
+
+These answers to the open questions override anything later in this document
+that disagrees with them.
+
+| Topic | Answer | What changes in the plan |
+|-------|--------|--------------------------|
+| Hardware | A Lenovo laptop and a Jedel gaming headset with a boom mic. No audio interface. | **WASAPI exclusive mode is the main audio path**, because a gaming headset has no ASIO driver. ASIO support stays in the build for later. Latency is measured acoustically, with the headset's mic held against its ear cup (section 4.11). If the round trip is above 15 ms, see "Latency fallback" below. |
+| Repo visibility | Public | The project's own code is licensed **AGPLv3**, which matches JUCE's open-source licence. Vocal test recordings stay **out of the public repo** (private storage, anonymised singer IDs). |
+| Musical style | No fixed style, but the product is for the **Nigerian market** | The demo styles are **Afrobeats** (upbeat, 4/4, about 100–112 BPM) and **Nigerian worship** (slow, 6/8, about 60–75 BPM). Highlife or praise is a possible third style. Add a **percussion layer** (shaker, congas, bell) next to drums, bass and keys. Test songs are Nigerian songs sung by Nigerian singers. |
+| Time signature | 4/4 accepted | Afrobeats is 4/4, but many worship songs are in 6/8. The engine therefore treats the time signature as a property of each style (beats per bar and beat subdivision). The first style is 4/4. The 6/8 worship style follows in Phase 4. |
+| Footswitch | None for the demo | **The laptop keyboard is the controller** (Space to tap and so on). Averaging over four taps makes keyboard timing good enough. MIDI pedal support stays in the plan because it costs little. |
+| Who leads the tempo | The band leads. Following the singer matters less for now. | The band keeps the tapped tempo exactly. Re-tapping during playback changes it. **Automatic tempo following becomes a stretch goal**, done only if time is left after Phase 5. Phase 4 now covers feel and control: dynamics, fills, sections and the 6/8 style. The "±5% drift" success criterion is **deferred**. |
+
+### Latency fallback for a headset without an audio interface
+
+The band's sound is scheduled ahead of time on the beat clock, so the band
+plays on the beat whatever the latency is. Round-trip latency only affects
+**the singer hearing their own voice** in the headphones. If the headset
+cannot reach 15 ms through WASAPI exclusive mode:
+
+1. Turn software voice monitoring off, or down. The singer then hears their
+   own voice acoustically and the band through the headset.
+2. Use a low-cost USB audio interface with an ASIO driver and any wired
+   headphones. Such interfaces usually reach well under 10 ms. The code
+   already supports ASIO.
+
+Phase 0 measures the headset and decides between these.
+
+---
+
 ## 1. Summary of decisions
 
 | # | Decision | Why |
@@ -17,8 +48,8 @@ decisions that the spec leaves open.
 | D4 | One **timeline**: a 64-bit sample counter. Every analysis frame, tap and scheduled note carries a timestamp on it, corrected by the measured input and output latency. | Analysis can then run on any thread without losing timing accuracy, and the band's sound is aligned to what the singer hears. |
 | D5 | **Count-in tap**: four taps make one bar, and the band enters on the predicted fifth tap (beat 1 of the next bar). | This is how a band leader counts in. A least-squares fit over the taps gives both tempo and phase. |
 | D6 | **Key lock**: a provisional key appears after at most 3 s of singing, the key locks when the band enters, and it changes only by hand or at a section boundary. | A wrong key change in the middle of a song sounds worse than a key that is slightly late. |
-| D7 | **Follow** means a gentle phase-locked loop around the tapped tempo, not blind beat tracking. | ±5% drift from a known starting point is a much easier problem than finding the beat from nothing in sparse, syncopated vocal onsets. |
-| D8 | Record test clips with the singer hearing a **click in headphones**, some with a ±5% tempo ramp. | This gives exact beat ground truth for the follow criterion, with no hand annotation. |
+| D7 | **Follow** (now a stretch goal, see section 0) means a gentle phase-locked loop around the tapped tempo, not blind beat tracking. | ±5% drift from a known starting point is a much easier problem than finding the beat from nothing in sparse, syncopated vocal onsets. |
+| D8 | Record test clips with the singer hearing a **click in headphones**, some with a ±5% tempo ramp. | This gives exact beat ground truth, with no hand annotation, if the follow stretch goal is attempted. The click also keeps the clips usable as file input at a known tempo. |
 | D9 | Add **file-input mode** (a WAV file stands in for the mic) and a **session recorder** early, in Phase 1. | Testing becomes repeatable without a singer, and the 30-minute soak test can run unattended. |
 | D10 | Keep SFZ sample kits **out of git** and download them with a pinned fetch script. Keep vocal test data in **private** storage. | Kits are large, and each has its own licence. Singers' recordings need consent. |
 
@@ -33,7 +64,8 @@ decisions that the spec leaves open.
   own copy. JUCE needs CMake 3.22 or later.
 - **sfizz's latest tag is 1.2.3, and the last commit on `main` is from March
   2025.** The project is effectively in maintenance mode. It is BSD-2-Clause.
-  Pin the tag, and put sfizz behind a small `Instrument` interface so that a
+  Pin a commit (we use `main` at f5c6e29, which adds stuck-note and
+  use-after-free fixes made after 1.2.3), and put sfizz behind a small `Instrument` interface so that a
   fallback sampler stays possible (see Risks).
   - Build options to set: `SFIZZ_SHARED=OFF`, `SFIZZ_RENDER=OFF`,
     `SFIZZ_JACK=OFF`, `SFIZZ_USE_SNDFILE=OFF` (libsndfile is LGPL), and
@@ -153,7 +185,7 @@ CMakeLists.txt
 CMakePresets.json                 windows-debug, windows-release, linux-core
 THIRD_PARTY.md                    licences of every dependency and asset
 libs/JUCE                         submodule, pinned to 9.0.4
-libs/sfizz                        submodule, pinned to 1.2.3 (recursive)
+libs/sfizz                        submodule, pinned to main at f5c6e29 (recursive)
 src/
   common/   SpscQueue.h  Timeline.h  RtAllocGuard.*  Seqlock.h        ┐
   audio/    Decimator.*  YinPitch.*  OnsetDetector.*  Fft.*           │ liveband_core
@@ -257,7 +289,7 @@ meter and the confidence.
    threshold. At 3 s, show the best guess whatever the margin, with its
    confidence. The key **locks** when the band enters. While locked, a shadow
    estimate keeps running and appears in the UI.
-6. **Overrides:** keys or footswitch commands shift the key by ±1 semitone,
+6. **Overrides:** key presses (or pedal commands) shift the key by ±1 semitone,
    toggle major/minor, and unlock the key.
 
 ### 4.5 `TapTempo` (engine thread)
@@ -296,9 +328,13 @@ meter and the confidence.
 - Pattern, layer and transposition changes **take effect at bar boundaries**.
   They are queued until then.
 
-### 4.7 `BeatFollower` (engine thread, Phase 4)
-1. Snap each onset to the nearest **eighth-note grid point** of the current
-   clock. The timing error is `e = t_onset - t_grid`, in beats.
+### 4.7 `BeatFollower` (engine thread, stretch goal)
+
+Deferred by the decision in section 0. The design is kept here for when it is
+picked up.
+
+1. Snap each onset to the nearest **subdivision grid point** of the current
+   clock: eighth notes for 4/4 styles, triplet eighths for 6/8. The timing error is `e = t_onset - t_grid`, in beats.
 2. Accept the onset only if |e| < 0.15 beat and its strength passes a
    threshold. Onsets on the beat weigh more than onsets on the off-beat.
 3. Run an **alpha-beta filter** with two states, phase and period, updated
@@ -317,11 +353,12 @@ meter and the confidence.
 
 ### 4.8 `Arranger` (engine thread) and groove data
 - **Style data**, loaded at startup:
-  - `style.json` holds the name, time signature (4/4 only in the PoC), BPM
+  - `style.json` holds the name, time signature (beats per bar and beat
+    subdivision, so 4/4 and 6/8 both work), BPM
     range, the sections (intro, verse, chorus, fill, ending), the chord chart
     per section, and the staged-entry plan.
-  - One `.mid` file per section. Its tracks are named `drums`, `bass`, `keys`
-    and `pad`, and the music is written **in C major, with a C minor
+  - One `.mid` file per section. Its tracks are named `drums`, `perc`, `bass`,
+    `keys` and `pad`, and the music is written **in C major, with a C minor
     variant**.
   - `GrooveLoader` turns each `juce::MidiFile` into an immutable core
     `Pattern`: a list of events {beat, duration in beats, note, velocity},
@@ -331,7 +368,7 @@ meter and the confidence.
   `Idle → Listening (provisional key) → CountIn → Playing(section) → Ending → Idle`.
 - **Staged entry**, configurable per style:
   - If the key is known when the band starts: pad and keys on bar 1, drums on
-    bar 5, bass on bar 9. The footswitch can advance a stage early.
+    bar 5, bass on bar 9. A key press (or pedal) can advance a stage early.
   - If the key is not yet known: drums first, then pad and bass at the next
     4-bar boundary after the key locks.
 - **Section change:** pressing "next" queues the change. A drum fill replaces
@@ -374,6 +411,7 @@ meter and the confidence.
 | Hold tempo (no follow) | H | — |
 | Panic | Esc | — |
 
+- **For the demo the laptop keyboard is the controller** (section 0).
 - Footswitches that pretend to be a USB keyboard (page-turner pedals) work
   through the key map with no extra code.
 - MIDI timestamps are more precise than key events, so recommend a MIDI pedal
@@ -381,8 +419,10 @@ meter and the confidence.
 - The UI and MIDI threads both push `ControlEvent`s into the engine's queue.
 
 ### 4.11 Developer tools inside the app
-- **Latency tester:** connect the interface's output to its input with a
-  loopback cable. The app plays a log chirp, cross-correlates the recording
+- **Latency tester:** connect the output back to the input. With the
+  headset, take it off and hold the mic against one ear cup (acoustic
+  loopback). With an audio interface, use a loopback cable. The app plays a
+  short log chirp at a moderate level, cross-correlates the recording
   with it, and reports the round-trip latency as the median of 10 runs. Check
   the result against Oblique Audio's RTL Utility. The measured input and
   output offsets are stored as the calibration used in 2.2.
@@ -433,26 +473,30 @@ Each phase ends with exit criteria that can be checked. The estimates assume
 one developer.
 
 ### Phase 0: Setup and latency proof (2–3 days)
-- [ ] Create the repo skeleton, the submodules (JUCE 9.0.4, and sfizz 1.2.3
+- [x] Create the repo skeleton, the submodules (JUCE 9.0.4, and sfizz `main`
       recursive), CMake, presets, `.gitignore` and both CI jobs.
-- [ ] Build a pass-through app: `AudioEngine`, the device selector
-      (`AudioDeviceSelectorComponent`), ASIO and WASAPI exclusive mode, at
-      48 kHz with 128 frames. Also try 64.
-- [ ] Add the real-time guards: `ScopedNoDenormals`, the debug allocation
+- [x] Build a pass-through app: `AudioEngine`, the device selector
+      (`AudioDeviceSelectorComponent`), WASAPI exclusive mode first and ASIO
+      when present, at 48 kHz with 128 frames. Also try 64.
+- [x] Add the real-time guards: `ScopedNoDenormals`, the debug allocation
       guard, the callback profiler, and the xrun counter in the UI.
-- [ ] Build the latency tester and store the calibration.
-- [ ] **sfizz smoke test:** build it under MSVC, load one SFZ file and render
+- [x] Build the latency tester and store the calibration.
+- [x] **sfizz smoke test:** build it under MSVC, load one SFZ file and render
       a note. Doing this early removes the main integration risk.
-- [ ] Write `docs/WINDOWS_TUNING.md`: High Performance power plan, USB
-      selective suspend off, run on AC power, no USB hub. If LatencyMon flags
-      Wi-Fi or Bluetooth, turn them off during a gig.
-- [ ] Write `THIRD_PARTY.md`, the first licence audit.
+- [x] Write `docs/WINDOWS_SETUP.md`: install steps, High Performance power
+      plan, USB selective suspend off, run on AC power, no USB hub, and the
+      headset settings (allow exclusive mode, 48 kHz default format, audio
+      enhancements and voice effects off, no communications ducking). If
+      LatencyMon flags Wi-Fi or Bluetooth, turn them off during a gig.
+- [x] Write `THIRD_PARTY.md`, the first licence audit.
 - **Exit:**
-  - Measured round-trip latency below 15 ms with ASIO at 128 frames. The
-    expected figure is about 6–10 ms on a Scarlett or UMC.
+  - The headset's round-trip latency is measured with WASAPI exclusive mode
+    at the smallest buffer that plays without dropouts. Below 15 ms passes.
+    Above it, choose one of the two options in "Latency fallback" (section 0)
+    and record the choice.
   - LatencyMon reports the system as suitable for real-time audio over
     10 minutes.
-  - The WASAPI exclusive figure is recorded as the fallback.
+  - The sfizz test note plays through the headset.
 
 ### Phase 1: Listen (week 1)
 - [ ] Core library skeleton, Catch2, `SpscQueue`, `Timeline`.
@@ -464,8 +508,10 @@ one developer.
 - [ ] `lb-analyze`, and `eval_pitch.py`, which compares against
       `librosa.pyin`.
 - [ ] **Record the test set**, in parallel with the work above:
-  - 15–20 clips of 30–60 s, from 4 or more singers of mixed voice types.
-  - At least 10 different keys, both major and minor, at 70–150 BPM.
+  - 15–20 clips of 30–60 s, from 4 or more Nigerian singers of mixed voice
+    types, singing Nigerian songs: Afrobeats and pop, worship and praise.
+  - At least 10 different keys, both major and minor, at 60–140 BPM, with
+    some 6/8 worship songs.
   - Every clip recorded with a click in the singer's headphones, and the
     click's start sample saved. About 5 clips use a ±5% tempo ramp, and
     about 3 are sung freely or rubato.
@@ -485,10 +531,12 @@ one developer.
 ### Phase 2: Play (week 2)
 - [ ] `SfizzInstrument` with the drum kit. Play a test note from the
       keyboard and check the CPU cost.
-- [ ] The `Pattern` type, `GrooveLoader` and the `style.json` schema. Author
-      or obtain two 4/4 styles, for example pop-rock and soul ballad, each
-      with verse, chorus and fill drum patterns. Check the licence of any
-      MIDI packs.
+- [ ] The `Pattern` type, `GrooveLoader` and the `style.json` schema
+      (time signature per style).
+- [ ] The **Afrobeats** style (4/4): verse, chorus and fill patterns for
+      drums and percussion. The starter grooves are generated by a script in
+      `tools/python/`, so they are licence-clean and easy to edit. A Nigerian
+      keyboardist or producer should review them before the demo.
 - [ ] `BeatClock` and `PatternPlayer`, with unit tests:
   - Event times show no drift after a simulated 30 minutes (error below
     1 sample).
@@ -510,7 +558,7 @@ one developer.
       profiles, the margin and confidence, the lock logic, and the UI.
 - [ ] `eval_key.py`: accuracy against time-to-decision over the test set.
       Choose the profile and thresholds from it.
-- [ ] Bass and keys/pad kits. Transposition with the register rule.
+- [ ] Bass, keys/pad and percussion kits. Transposition with the register rule.
       Selection of the major or minor variant.
 - [ ] The `Arranger` state machine, staged entry, and layer changes at bar
       boundaries.
@@ -522,25 +570,28 @@ one developer.
   - Transposed bass and keys stay in their registers.
   - No hanging notes on transposition or section changes.
 
-### Phase 4: Follow (week 4, timeboxed)
-- [ ] `BeatFollower`: alpha-beta filter on grid errors, the ODF comb check,
-      confidence gating and hold mode.
-- [ ] Check the latency compensation: onsets from a file-input click must
-      land at zero mean grid error.
-- [ ] `eval_beats.py` on the ramp clips, comparing following with a fixed
-      tempo.
-- [ ] Loudness drives velocity, fills and the intense variant.
-- [ ] Section changes from the footswitch, with a fill in the last bar.
+### Phase 4: Feel, control and the 6/8 style (week 4)
+- [ ] Vocal loudness drives velocity, fills and the intense variant.
+- [ ] Section changes from the keyboard, with a fill in the last bar of the
+      phrase.
+- [ ] Re-tap during playback: four taps re-lock tempo and phase at the next
+      bar. Nudge keys change the tempo by ±1%.
+- [ ] The **Nigerian worship** style (6/8): pad- and piano-led, soft drums,
+      with its own staged entry.
 - **Exit:**
-  - On ramp clips, after 4 bars of convergence, at least 90% of band beats
-    fall within ±40 ms of the true beat.
-  - The fixed-tempo baseline must *fail* the ramp test. Otherwise the test is
-    too easy.
-  - On steady clips, following must not make sync worse than a fixed tempo.
-  - On rubato clips, the follower holds and does not run away.
-- **If the exit is missed when the timebox ends:** demo with re-tapping
-  during playback plus manual nudge keys, and record the gap in the results
-  report.
+  - A section change lands on the next phrase boundary, with the fill in the
+    bar before it.
+  - Re-tapping re-locks within one bar, with no hanging notes and no audible
+    jump.
+  - The 6/8 style plays in time, with transposition and staged entry working.
+
+### Stretch goal: automatic tempo following
+Only if time is left after Phase 5, following the design in section 4.7.
+- [ ] `BeatFollower`, the latency-compensation check, and `eval_beats.py` on
+      the ramp clips.
+- **Exit:** on ramp clips, after 4 bars, at least 90% of band beats within
+  ±40 ms of the true beat. A fixed tempo must fail the same test, and on
+  steady or rubato clips following must not make things worse.
 
 ### Phase 5: Test and demo (week 5)
 - [ ] Live sessions with at least 3 singers, following the measurement
@@ -549,8 +600,8 @@ one developer.
 - [ ] `docs/RESULTS.md`: the measured value for every success criterion.
 - [ ] Record the demo video.
 
-**Total:** about 5½ weeks. Keep **one buffer week** for Phase 4, which is the
-most research-like part.
+**Total:** about 5½ weeks, plus **one buffer week**. Automatic tempo
+following is outside this estimate.
 
 ---
 
@@ -562,7 +613,8 @@ most research-like part.
 | Key within 3 s | Live: time from the first voiced frame to the provisional key in the session log | ≤ 3 s |
 | Key ≥ 80% correct | `lb-analyze` on `testdata/`, first 3 s of voiced singing, exact match | ≥ 80% of clips |
 | Tap locks instantly | A script sends MIDI taps; the loopback recording measures the band's first downbeat against the regression prediction | Entry error < 10 ms, tempo error < 0.5% |
-| Follow ±5% drift | `eval_beats.py` on ramp clips (offline, file input) and on session recordings (live) | ≥ 90% of beats within ±40 ms after 4 bars |
+| Follow ±5% drift | **Deferred** (section 0). If the stretch goal is attempted: `eval_beats.py` on ramp clips and session recordings | ≥ 90% of beats within ±40 ms after 4 bars |
+| Re-tap during playback | Session log: time from the fourth re-tap to the new tempo taking effect | At the next bar, no hanging notes |
 | Fully offline | Build without curl or web browser support; run with networking turned off | Works |
 | CPU < 30% | `getCpuUsage()` (callback load) and the process CPU counter, logged every second over 30 min. Reference laptop: a 4-core/8-thread laptop from the last 5 years | Mean < 30%, no audible peaks |
 | No dropouts in 30 min | Device xrun count, our own overrun counter, and `check_dropouts.py` scanning the recorded output for discontinuities | 0 |
@@ -573,14 +625,17 @@ most research-like part.
 
 | Risk | Mitigation |
 |------|------------|
-| sfizz is dormant (no commits since March 2025) | Pin 1.2.3 and build it in Phase 0. If it blocks, the `Instrument` interface allows a fallback: a simple one-shot sampler built on `juce::Synthesiser`, which is enough for drums. |
+| sfizz is dormant (no commits since March 2025) | Pin a known commit and build it in Phase 0. If it blocks, the `Instrument` interface allows a fallback: a simple one-shot sampler built on `juce::Synthesiser`, which is enough for drums. |
 | Speaker bleed into the mic: the follower locks onto the band's own drums, and pitch tracking gets confused | Use headphones or in-ear monitors in the PoC. A cheap later fix: ignore onsets within ±30 ms of drum hits we scheduled ourselves, since we know exactly when they happen. Echo cancellation is out of scope. |
 | Relative major/minor confusion (C major versus A minor) | Weight phrase-final notes, offer a manual mode toggle, and start groove progressions on the tonic. |
 | The singer sings with no fixed reference and drifts from A440 | Bin relative to the estimated tuning offset. Stretch goal: retune the band with `setTuningFrequency`. |
 | Keyboard tap jitter | Least-squares fit over the taps. Recommend a MIDI pedal. |
-| Laptop DPC spikes (Wi-Fi, ACPI, GPU drivers) | `WINDOWS_TUNING.md`, LatencyMon in Phase 0 and Phase 5, run on AC power. |
+| Laptop DPC spikes (Wi-Fi, ACPI, GPU drivers) | `WINDOWS_SETUP.md`, LatencyMon in Phase 0 and Phase 5, run on AC power. |
 | Licence obligations even in a PoC | Giving binaries to testers counts as distribution. Under AGPL, JUCE then requires the recipients to have the source. Either keep the repo AGPL-compatible or get a JUCE licence before any binary leaves your hands. Review Steinberg's terms for the bundled ASIO headers as well. |
-| Phase 4 overruns | Timebox it. Re-tapping plus nudge keys is an acceptable demo fallback. |
+| The grooves do not sound Nigerian enough | Generated starter grooves are only a starting point. Have a Nigerian keyboardist or producer review or rewrite them. |
+| Free SFZ kits lack talking drum, shekere and log drum sounds | Use the closest General MIDI percussion (congas, shaker, agogo bell) for the PoC. Record or license authentic samples later. |
+| The gaming headset's latency is above 15 ms | See "Latency fallback" in section 0. |
+| Windows voice effects on the headset (noise suppression, automatic gain, Voice Clarity) distort pitch and loudness | Turn them off as described in `docs/WINDOWS_SETUP.md`. The app also shows the input level so it is easy to check. |
 
 ---
 
@@ -597,20 +652,14 @@ most research-like part.
 
 ---
 
-## 10. Open questions for you
+## 10. Remaining questions
 
-1. **Hardware:** do you already have the interface, mic and laptop? Which
-   models? The Phase 0 numbers and the reference laptop for the CPU criterion
-   depend on this.
-2. **Repo visibility:** a public repo means AGPL is easy. A private repo means
-   no binaries go to outsiders without a JUCE licence. Where should the
-   vocal recordings live?
-3. **Musical styles for the demo:** I suggest two 4/4 styles. Who writes the
-   MIDI grooves: you, or a bought or royalty-free pack (whose licence needs
-   checking)?
-4. **Time signature:** 4/4 only for the PoC? I recommend yes; 6/8 and 3/4
-   come later.
-5. **Footswitch:** MIDI pedal or keyboard-emulating pedal? Which model?
-6. **Follow philosophy:** should the band lead and follow slowly (my
-   recommendation, and the way a real drummer works), or chase the singer
-   closely?
+The first round of questions is answered in section 0. Still open:
+
+1. Does the headset plug in by **USB** or by the **3.5 mm jack**? Both work,
+   but they use different Windows drivers, which changes the latency to
+   expect.
+2. Which **Lenovo model** is the laptop (Settings → System → About)? It becomes
+   the reference laptop for the CPU criterion.
+3. Is there a **Nigerian keyboardist or producer** who could review the
+   generated grooves before the demo?

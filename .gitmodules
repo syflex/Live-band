@@ -1,0 +1,8 @@
+[submodule "libs/JUCE"]
+	path = libs/JUCE
+	url = https://github.com/juce-framework/JUCE.git
+	shallow = true
+[submodule "libs/sfizz"]
+	path = libs/sfizz
+	url = https://github.com/sfztools/sfizz.git
+	shallow = true

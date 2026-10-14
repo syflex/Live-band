@@ -1,0 +1,27 @@
+# Build output
+/out/
+/build/
+/.vs/
+CMakeUserPresets.json
+compile_commands.json
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Third-party sample kits are downloaded, not committed (see THIRD_PARTY.md).
+# The tiny generated test instrument is the exception.
+/assets/sfz/*
+!/assets/sfz/test/
+
+# Vocal recordings stay out of this public repository (see docs/IMPLEMENTATION_PLAN.md, section 0).
+/testdata/*
+!/testdata/README.md
