@@ -1,0 +1,68 @@
+{
+  "name": "Afrobeats",
+  "description": "Modern Nigerian Afrobeats: kick on 1, the and of 2, 3 and the and of 4, side stick on the son clave, 16th shaker, congas.",
+  "timeSignature": [
+    4,
+    4
+  ],
+  "tempo": {
+    "default": 104,
+    "min": 90,
+    "max": 125
+  },
+  "swing": 0.54,
+  "layers": [
+    "drums",
+    "perc"
+  ],
+  "countIn": [
+    {
+      "beat": 0,
+      "note": 37,
+      "velocity": 100
+    },
+    {
+      "beat": 1,
+      "note": 37,
+      "velocity": 80
+    },
+    {
+      "beat": 2,
+      "note": 37,
+      "velocity": 80
+    },
+    {
+      "beat": 3,
+      "note": 37,
+      "velocity": 80
+    }
+  ],
+  "entry": [
+    {
+      "note": 49,
+      "velocity": 104
+    }
+  ],
+  "ending": [
+    {
+      "note": 36,
+      "velocity": 120
+    },
+    {
+      "note": 49,
+      "velocity": 112
+    }
+  ],
+  "sections": [
+    {
+      "name": "Verse",
+      "pattern": "verse.mid",
+      "fill": "fill-verse.mid"
+    },
+    {
+      "name": "Chorus",
+      "pattern": "chorus.mid",
+      "fill": "fill-chorus.mid"
+    }
+  ]
+}

@@ -31,7 +31,11 @@ add_library(liveband_core STATIC
     src/audio/OnsetDetector.cpp
     src/audio/VocalAnalyzer.cpp
     src/audio/YinPitch.cpp
-    src/music/ClickTrack.cpp)
+    src/music/BeatClock.cpp
+    src/music/ClickTrack.cpp
+    src/music/Groove.cpp
+    src/music/PatternPlayer.cpp
+    src/music/TapTempo.cpp)
 target_include_directories(liveband_core PUBLIC src)
 target_compile_features(liveband_core PUBLIC cxx_std_20)
 target_link_libraries(liveband_core PRIVATE liveband_warnings)
@@ -56,6 +60,8 @@ if(LB_BUILD_TESTS)
         tests/YinPitchTests.cpp
         tests/VocalAnalyzerTests.cpp
         tests/ClickTrackTests.cpp
+        tests/BeatClockTests.cpp
+        tests/PatternPlayerTests.cpp
         src/common/RtAllocGuardNew.cpp)
     target_link_libraries(liveband_tests PRIVATE liveband_core Catch2::Catch2WithMain liveband_warnings)
 

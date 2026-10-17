@@ -1,0 +1,587 @@
+{
+  "description": "VCSL samples used by afro-kit.sfz. Downloaded by tools/python/fetch_assets.py.",
+  "licence": "CC0 1.0 (Versilian Community Sample Library, https://github.com/sgossner/VCSL)",
+  "base_url": "https://raw.githubusercontent.com/sgossner/VCSL/dfcf4a4918771eee884b96ad4493de82ef84daf6/",
+  "files": {
+    "vcsl/agogo/Agogo_High_v1_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Agogo Bells/Agogo_High_v1_rr1_Mid.wav",
+      "sha256": "a319d68b2e38304d063531b2a152194871623bbce0dc55a870c0ab45570cbbdf",
+      "bytes": 196284
+    },
+    "vcsl/agogo/Agogo_High_v2_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Agogo Bells/Agogo_High_v2_rr1_Mid.wav",
+      "sha256": "f74a3100634a4372f2e2f81adf2f6a7839861ec4dcf13291001a3268e37806de",
+      "bytes": 200936
+    },
+    "vcsl/agogo/Agogo_High_v3_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Agogo Bells/Agogo_High_v3_rr1_Mid.wav",
+      "sha256": "c7f0d2b70c6cee34beea62d7566227da2687ca5c87d72d1245f444fbe2c76b43",
+      "bytes": 197312
+    },
+    "vcsl/agogo/Agogo_Low_v1_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Agogo Bells/Agogo_Low_v1_rr1_Mid.wav",
+      "sha256": "7f113910f75c61825c56ee464b30cc582f915c795668e71058ede66cd842834c",
+      "bytes": 349748
+    },
+    "vcsl/agogo/Agogo_Low_v2_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Agogo Bells/Agogo_Low_v2_rr1_Mid.wav",
+      "sha256": "36fb0e28c0ba39336082902d299a5b2d20b9f5f0cb448cb64e4b13837b896eea",
+      "bytes": 431804
+    },
+    "vcsl/bongos/BongoH_Hit1_v1_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoH_Hit1_v1_rr1_Mid.wav",
+      "sha256": "7ebcd2149e8a75189446afba67c96b58f42757bf7aa355364f2e11cee705f33f",
+      "bytes": 146696
+    },
+    "vcsl/bongos/BongoH_Hit1_v1_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoH_Hit1_v1_rr2_Mid.wav",
+      "sha256": "4905c0cee5db34c8edfc49aa51d93f4a7d2a823190eaa12d2500515639a42cf3",
+      "bytes": 199484
+    },
+    "vcsl/bongos/BongoH_Hit1_v2_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoH_Hit1_v2_rr1_Mid.wav",
+      "sha256": "dd9b6239a151702966a995937f74ac022c9bb950c967277fbd16beaced0c9e1a",
+      "bytes": 209356
+    },
+    "vcsl/bongos/BongoH_Hit1_v2_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoH_Hit1_v2_rr2_Mid.wav",
+      "sha256": "03d4653d70e2180643872da4ebb94845f4da81b8d8f9ba2c7df3a611bd9d65ac",
+      "bytes": 177716
+    },
+    "vcsl/bongos/BongoH_Hit1_v3_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoH_Hit1_v3_rr1_Mid.wav",
+      "sha256": "e93ed5c0fbafc3f122ced7c56c3f08021d8616e96c81c42aa62c5f368111d001",
+      "bytes": 205208
+    },
+    "vcsl/bongos/BongoH_Hit1_v3_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoH_Hit1_v3_rr2_Mid.wav",
+      "sha256": "e0c143a2d32aca5430ffe2254c699b772ecfeaf6eef9d4c414365b538f693916",
+      "bytes": 186744
+    },
+    "vcsl/bongos/BongoL_Hit1_v1_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoL_Hit1_v1_rr1_Mid.wav",
+      "sha256": "746f5c4d37cf956c083f0c98b74dd7b6f7daeda6405d7b1534bbc56f1b741e4a",
+      "bytes": 186436
+    },
+    "vcsl/bongos/BongoL_Hit1_v1_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoL_Hit1_v1_rr2_Mid.wav",
+      "sha256": "30c83a15eb158a8114ada571c196027691cf205d9fd55423d4405a65b94dc231",
+      "bytes": 172984
+    },
+    "vcsl/bongos/BongoL_Hit1_v2_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoL_Hit1_v2_rr1_Mid.wav",
+      "sha256": "0ee22ac30a27a1e91fbba58e0c4b36b28ea6c508dad5f11b10bdb9db07f2b443",
+      "bytes": 168720
+    },
+    "vcsl/bongos/BongoL_Hit1_v2_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoL_Hit1_v2_rr2_Mid.wav",
+      "sha256": "0933627d939145e57ff95e93ce3618b0c35f8de6ed6f0f4bfad42f8dd66f8fa5",
+      "bytes": 209296
+    },
+    "vcsl/bongos/BongoL_Hit1_v3_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoL_Hit1_v3_rr1_Mid.wav",
+      "sha256": "07986a1bc54b31dafd9c7dc250e42a613977b320b33b2e4652d21332064de4eb",
+      "bytes": 209224
+    },
+    "vcsl/bongos/BongoL_Hit1_v3_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Bongos/BongoL_Hit1_v3_rr2_Mid.wav",
+      "sha256": "da93f8eba020d57ec57c27505f4132c346900aee6a5f76e9754d01c93658a226",
+      "bytes": 205936
+    },
+    "vcsl/cabasa/Cabasa1_Hit_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Cabasa/Cabasa1_Hit_rr1_Mid.wav",
+      "sha256": "0290fec6f2e39d3757c6d69562ef50d47c4ec7da2e2947110e7738896b4f378d",
+      "bytes": 143312
+    },
+    "vcsl/cabasa/Cabasa1_Hit_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Cabasa/Cabasa1_Hit_rr2_Mid.wav",
+      "sha256": "3ad7d3e63b235755cef86be29b4c188d2935dd621e96b48658d0aa6adb78b4d1",
+      "bytes": 156688
+    },
+    "vcsl/claps/Clap_rr1.wav": {
+      "source": "Idiophones/Struck Idiophones/Claps/Clap_rr1.wav",
+      "sha256": "4c9f3fe4a34733b9be6ed9ce5e5aad48b19c1029ae9c6dd1b96294a847539e3f",
+      "bytes": 141974
+    },
+    "vcsl/claps/Clap_rr2.wav": {
+      "source": "Idiophones/Struck Idiophones/Claps/Clap_rr2.wav",
+      "sha256": "5ae64e838b76d0658cc541f07c3c7dcfd4b08815a915f32843a8279bf2c33b9a",
+      "bytes": 136950
+    },
+    "vcsl/claps/Clap_rr3.wav": {
+      "source": "Idiophones/Struck Idiophones/Claps/Clap_rr3.wav",
+      "sha256": "e8c13dc41f31b479f8e3ec49e9dfc49c17d299cce36eedb657fe170f0e6fcb44",
+      "bytes": 132222
+    },
+    "vcsl/claps/Clap_rr4.wav": {
+      "source": "Idiophones/Struck Idiophones/Claps/Clap_rr4.wav",
+      "sha256": "3415613351d0af8de674ebc3e8200784c2ffc691da60698cb81ba03704ad748a",
+      "bytes": 147686
+    },
+    "vcsl/claps/Clap_rr5.wav": {
+      "source": "Idiophones/Struck Idiophones/Claps/Clap_rr5.wav",
+      "sha256": "7117311949d6640fb0d016bfe780fe3351924c49f48e876433893f4287f692ba",
+      "bytes": 126446
+    },
+    "vcsl/claps/Clap_rr6.wav": {
+      "source": "Idiophones/Struck Idiophones/Claps/Clap_rr6.wav",
+      "sha256": "b48d77c53e31f251b4304cf68daec2a85260becd1a93b81010b93adb7cdcfb46",
+      "bytes": 89770
+    },
+    "vcsl/claves/Claves1_Hit_v1_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Claves/Claves1_Hit_v1_rr1_Mid.wav",
+      "sha256": "19379cc794b9e50d4dc55200238e27091bedab63b7370eb625490c7a96631b34",
+      "bytes": 199848
+    },
+    "vcsl/claves/Claves1_Hit_v2_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Claves/Claves1_Hit_v2_rr1_Mid.wav",
+      "sha256": "bcabe27330761309eb4b4f6207e6e3b4be59815df86449ac05bfb9b81f19efc9",
+      "bytes": 191812
+    },
+    "vcsl/claves/Claves1_Hit_v3_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Claves/Claves1_Hit_v3_rr1_Mid.wav",
+      "sha256": "12285f65ed125f4140d1e8a86b2d6a08bf3283b7bf30c10d68290b8e8230a927",
+      "bytes": 228764
+    },
+    "vcsl/conga/Conga_HitN_v1_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Conga_HitN_v1_rr1_Sum.wav",
+      "sha256": "74bb1f4feb3ae739e229f47f54b66def0cd12adc0033e998091e6456a15eadd0",
+      "bytes": 185024
+    },
+    "vcsl/conga/Conga_HitN_v1_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Conga_HitN_v1_rr2_Sum.wav",
+      "sha256": "08c13ec3aecfeca05762d696e67ec592f018898ed3969270c31fda6d249391f6",
+      "bytes": 116928
+    },
+    "vcsl/conga/Conga_HitN_v2_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Conga_HitN_v2_rr1_Sum.wav",
+      "sha256": "13d322c0e7a830cdbcbdc5a6e05566dfe3f5a073b7b82a3262d3f6fc10f96764",
+      "bytes": 140012
+    },
+    "vcsl/conga/Conga_HitN_v2_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Conga_HitN_v2_rr2_Sum.wav",
+      "sha256": "4f52f6619fd12d1d0e1e942e67cdf77fcad06fef6de44eba8bab6df99ade4acd",
+      "bytes": 131952
+    },
+    "vcsl/conga/Conga_HitN_v3_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Conga_HitN_v3_rr1_Sum.wav",
+      "sha256": "664365ac735d819c69cabbbae8a78d225fa73059e698ad8ca292c46cc03c6961",
+      "bytes": 231124
+    },
+    "vcsl/conga/Conga_HitN_v3_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Conga_HitN_v3_rr2_Sum.wav",
+      "sha256": "d968cd98a8cf8238f244515a302b77adec88dae365bc9de9146ae8938225d142",
+      "bytes": 178648
+    },
+    "vcsl/conga/Quinto_HitFM1_v1_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitFM1_v1_rr1_Sum.wav",
+      "sha256": "c316a657a46160ae7b41b4181d9941752606705a5f7d4fae24e18a9dc94ed7e4",
+      "bytes": 123548
+    },
+    "vcsl/conga/Quinto_HitFM1_v1_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitFM1_v1_rr2_Sum.wav",
+      "sha256": "7a11113885e87277d08a5f10d492ea793be6c01c48172fe0490ca29e8e3a1f1a",
+      "bytes": 103280
+    },
+    "vcsl/conga/Quinto_HitFM1_v2_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitFM1_v2_rr1_Sum.wav",
+      "sha256": "92f9d0ea6694eadedd1ee55495a794fba5a3fe9b228c7d7d5c787f3c03690051",
+      "bytes": 156412
+    },
+    "vcsl/conga/Quinto_HitFM1_v2_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitFM1_v2_rr2_Sum.wav",
+      "sha256": "baede37228560f89bbddb5ee4b99a4d69d750fab7d17dd9c7d0944507f8cdca7",
+      "bytes": 169664
+    },
+    "vcsl/conga/Quinto_HitN_v1_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitN_v1_rr1_Sum.wav",
+      "sha256": "7ee442ad7d604433afebbb648e6dde63b7ca969973b2a215cfa26f104d597ed8",
+      "bytes": 117192
+    },
+    "vcsl/conga/Quinto_HitN_v1_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitN_v1_rr2_Sum.wav",
+      "sha256": "e2db1d64cef5f96d5fc484e926273c90aeef4dc39836dc80570f1932bd613fcd",
+      "bytes": 163996
+    },
+    "vcsl/conga/Quinto_HitN_v2_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitN_v2_rr1_Sum.wav",
+      "sha256": "ccbc9514d58b0a18af1aff2cabd29be7516ecb5790c9bcb707be67a374829e4b",
+      "bytes": 141228
+    },
+    "vcsl/conga/Quinto_HitN_v2_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitN_v2_rr2_Sum.wav",
+      "sha256": "24130dab5ff65095dcd6ac41c8c2e7d3b5abb675067cb08e973bbc72302a50dc",
+      "bytes": 155968
+    },
+    "vcsl/conga/Quinto_HitN_v3_rr1_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitN_v3_rr1_Sum.wav",
+      "sha256": "07fe0922f97a57969a3cbb706126de2d09d23f42f6390a9a9adac027d7741c7e",
+      "bytes": 207412
+    },
+    "vcsl/conga/Quinto_HitN_v3_rr2_Sum.wav": {
+      "source": "Membranophones/Struck Membranophones/Conga/Quinto_HitN_v3_rr2_Sum.wav",
+      "sha256": "84b8d93a05c13ad7c04e6bd28f467ae3667e15ccaaf8aacd93928ec66504fb4d",
+      "bytes": 157200
+    },
+    "vcsl/cowbell/Cowbell1_Hit_v2_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Cowbells/Cowbell1_Hit_v2_rr1_Mid.wav",
+      "sha256": "6820d8f2abebe1d3e4dba262ad628d833ab04ade72dd2711b0cf4d2a58fa780d",
+      "bytes": 199568
+    },
+    "vcsl/cowbell/Cowbell1_Hit_v3_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Cowbells/Cowbell1_Hit_v3_rr1_Mid.wav",
+      "sha256": "36e9243e18b299bde0ebbb108c65846ddb5d46b35a61655fa18a0327e3390e87",
+      "bytes": 204528
+    },
+    "vcsl/cowbell/Cowbell1_Hit_v4_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Cowbells/Cowbell1_Hit_v4_rr1_Mid.wav",
+      "sha256": "e32a7a646bddfbc63595de9f64e3e435999c932ebadf0fe98759e754096002a0",
+      "bytes": 195080
+    },
+    "vcsl/cymbal/susCymb1_hit_bell_fff1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_bell_fff1.wav",
+      "sha256": "6be90461233ba1900c1c02118cc0d00b50d0d534596ec0ae2fe5bc1e0ce0e715",
+      "bytes": 748994
+    },
+    "vcsl/cymbal/susCymb1_hit_bell_mf1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_bell_mf1.wav",
+      "sha256": "5b30beca3342172715025f168966dee94e9c10b53a441aef29a5654423cfbe9d",
+      "bytes": 1279550
+    },
+    "vcsl/cymbal/susCymb1_hit_bell_pp1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_bell_pp1.wav",
+      "sha256": "4b1eae9ea4bef2fa129ebc519d26047f599406ba44e2e058744b08894fdff238",
+      "bytes": 1300206
+    },
+    "vcsl/cymbal/susCymb1_hit_f1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_f1.wav",
+      "sha256": "42a8ece91eccec9b7063793e6644d037a9005c01d5b76f6bec358e8d53fb92a5",
+      "bytes": 2046894
+    },
+    "vcsl/cymbal/susCymb1_hit_fff1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_fff1.wav",
+      "sha256": "993ceb041adaad19c88042e9d6e66707c30eda6e44a5a263d68bb4a3cdb2ca02",
+      "bytes": 2285114
+    },
+    "vcsl/cymbal/susCymb1_hit_mp1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_mp1.wav",
+      "sha256": "426238ad2bfadab07895c7b8f89204fed623d865693cc02d72c68627a86df75e",
+      "bytes": 1981318
+    },
+    "vcsl/cymbal/susCymb1_hit_pp1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_pp1.wav",
+      "sha256": "d3221ae2c34233b1fa8ceb011ac91d9d3064a57bacff158e41fdef780ad575f8",
+      "bytes": 1844706
+    },
+    "vcsl/cymbal/susCymb1_hit_stick_f1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_stick_f1.wav",
+      "sha256": "bc03d2057fed2e56f0aa5f34d3fa42d859ba06150f6b9433409d3fce43342fcb",
+      "bytes": 1213358
+    },
+    "vcsl/cymbal/susCymb1_hit_stick_mp1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_stick_mp1.wav",
+      "sha256": "17294cefa7f50367d1d9ae885a5f63a52eab372b90aeb7c3a8b400942cc95b9f",
+      "bytes": 1399926
+    },
+    "vcsl/cymbal/susCymb1_hit_stick_pp1.wav": {
+      "source": "Idiophones/Struck Idiophones/Suspended Cymbal 1/susCymb1_hit_stick_pp1.wav",
+      "sha256": "6f690228ff01e590965598c8b2da534b9c9126426ce106728be46e71a28ab93f",
+      "bytes": 1152978
+    },
+    "vcsl/hihat/HiHat_Close_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_Close_rr1_Mid.wav",
+      "sha256": "4e4dbb4ddbeea653f95c2c229685fd5966ed9492fb8489d89d19dbd864f1a6b4",
+      "bytes": 236820
+    },
+    "vcsl/hihat/HiHat_Close_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_Close_rr2_Mid.wav",
+      "sha256": "7a6c73b5ea831498d5c5c596b464a57e380cdc7dd2ab697bf10a2696b7f1987d",
+      "bytes": 254600
+    },
+    "vcsl/hihat/HiHat_HitC_v1_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v1_rr1_Mid.wav",
+      "sha256": "88447fa285b9592cfb7ff2b333977b032e667215f3db0f84d6ff0f4953e39980",
+      "bytes": 210708
+    },
+    "vcsl/hihat/HiHat_HitC_v1_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v1_rr2_Mid.wav",
+      "sha256": "6545c09b04b4cd8dbf004d24d7a8a560b7d6272deb598ae263b3e1a0fa9832b2",
+      "bytes": 234640
+    },
+    "vcsl/hihat/HiHat_HitC_v2_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v2_rr1_Mid.wav",
+      "sha256": "e1fb54c9a030800038abcebbed1c056fb74bdeec627315f3cd5fd893c6e6b031",
+      "bytes": 247272
+    },
+    "vcsl/hihat/HiHat_HitC_v2_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v2_rr2_Mid.wav",
+      "sha256": "72830eafed387f4b4b5904d4d6f1da23e13b48986fa1bc09d7c5771eafbb3a1a",
+      "bytes": 250072
+    },
+    "vcsl/hihat/HiHat_HitC_v3_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v3_rr1_Mid.wav",
+      "sha256": "b65ca06ea4f8b5209fc8d98912094be1212911f21e01bd949cc9960db049d37c",
+      "bytes": 218792
+    },
+    "vcsl/hihat/HiHat_HitC_v3_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v3_rr2_Mid.wav",
+      "sha256": "fac6cf410239603afff803ea97aa78fc38ccae185b5f60217c3c8cd632c265bd",
+      "bytes": 279024
+    },
+    "vcsl/hihat/HiHat_HitC_v4_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v4_rr1_Mid.wav",
+      "sha256": "ccaf3b3a353c22d7aac00c261229c42a1ef083285069f4c76dbafba454b46edd",
+      "bytes": 266280
+    },
+    "vcsl/hihat/HiHat_HitC_v4_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitC_v4_rr2_Mid.wav",
+      "sha256": "98325d2327a7165b12840951de3fd2297e59fcdd0a6a58176a5cb4a3ed1f2958",
+      "bytes": 237564
+    },
+    "vcsl/hihat/HiHat_HitO_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitO_rr1_Mid.wav",
+      "sha256": "fa492ec14cc6924b43ad5fcf9e9a0f406d926998835bde2eb5847cd15ad25be7",
+      "bytes": 1026612
+    },
+    "vcsl/hihat/HiHat_HitO_rr2_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Hi-Hat Cymbal/HiHat_HitO_rr2_Mid.wav",
+      "sha256": "f71f21883f6fe5466d15610ef0e9241ba3851c821858a958f8a6a75bff774760",
+      "bytes": 1086072
+    },
+    "vcsl/shaker/Mid_ShakerHighFaster_Down_rr1.wav": {
+      "source": "Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerHighFaster_Down_rr1.wav",
+      "sha256": "cf4cb388ffcff5a042149e0645123b089ae85e8342876421e817dce55ce66a5a",
+      "bytes": 31556
+    },
+    "vcsl/shaker/Mid_ShakerHighFaster_Down_rr2.wav": {
+      "source": "Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerHighFaster_Down_rr2.wav",
+      "sha256": "fa616e9ea22817bb75dfeb6a914440ea933696d43649d6c472f417617b741bd4",
+      "bytes": 24012
+    },
+    "vcsl/shaker/Mid_ShakerHighFaster_Up_rr1.wav": {
+      "source": "Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerHighFaster_Up_rr1.wav",
+      "sha256": "45ae715ce4f64280c9d8fa7eacb4e7003127b93c59c08e95125b67b173cf98e0",
+      "bytes": 32196
+    },
+    "vcsl/shaker/Mid_ShakerHighFaster_Up_rr2.wav": {
+      "source": "Idiophones/Struck Idiophones/Shaker, Small/Mid_ShakerHighFaster_Up_rr2.wav",
+      "sha256": "43511c3cf1522a3adf1f5533d443aa147e4a3e5272615e29485cb8efebc63dd2",
+      "bytes": 24672
+    },
+    "vcsl/snare/Snare2_HitNS_v2_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v2_rr1_Mid.wav",
+      "sha256": "445dfee4836b775d990f0aca47519b1c0bae8427a9eb9776866dc232fdb37aa2",
+      "bytes": 155408
+    },
+    "vcsl/snare/Snare2_HitNS_v2_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v2_rr2_Mid.wav",
+      "sha256": "32254a0e10111bda114e1c1e6e0f68d8703b2366a18b491ab1f97f15955f404d",
+      "bytes": 127576
+    },
+    "vcsl/snare/Snare2_HitNS_v4_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v4_rr1_Mid.wav",
+      "sha256": "6814a1ed6aa68319356e174d1c46f0c67e20560e55c28d94a8361344608c6515",
+      "bytes": 166260
+    },
+    "vcsl/snare/Snare2_HitNS_v4_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v4_rr2_Mid.wav",
+      "sha256": "4918cea2a1d7b2bcff9d38ef76c8c76a2a993f86916da5589a5c6b6f5c9ffbe5",
+      "bytes": 165192
+    },
+    "vcsl/snare/Snare2_HitNS_v5_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v5_rr1_Mid.wav",
+      "sha256": "422855e723dea59d316bd71346397833340a20c538c648c1b4369e9a3617b61b",
+      "bytes": 168240
+    },
+    "vcsl/snare/Snare2_HitNS_v5_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v5_rr2_Mid.wav",
+      "sha256": "988da5852703d415f7f89d5aff99e169333df35db767b3aa4f4894939a48b1a1",
+      "bytes": 148416
+    },
+    "vcsl/snare/Snare2_HitNS_v6_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v6_rr1_Mid.wav",
+      "sha256": "1231d6e59ea7a16c58defe6d001c0dd346e2d56a4a94000111399bb5e6652714",
+      "bytes": 196508
+    },
+    "vcsl/snare/Snare2_HitNS_v6_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitNS_v6_rr2_Mid.wav",
+      "sha256": "22974ad3e03d6f67c5524985c0fe468b04ddada97b6cd996f76242d1d1391f9d",
+      "bytes": 212804
+    },
+    "vcsl/snare/Snare2_HitSN_v3_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v3_rr1_Mid.wav",
+      "sha256": "3d71765aa0d1e13260abeb003720aef0841432df601883177bf70e97d9af6c99",
+      "bytes": 305304
+    },
+    "vcsl/snare/Snare2_HitSN_v3_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v3_rr2_Mid.wav",
+      "sha256": "770a0b6bfe95583c11014d5f9af9c94c425a15bd05234c86213aec356a2ffe29",
+      "bytes": 231264
+    },
+    "vcsl/snare/Snare2_HitSN_v5_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v5_rr1_Mid.wav",
+      "sha256": "6ec8445cb207df8f1178d8c3894f47969fd53fb2b81c404317e466de4598dc3e",
+      "bytes": 240496
+    },
+    "vcsl/snare/Snare2_HitSN_v5_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v5_rr2_Mid.wav",
+      "sha256": "6d563828174cf9f29d221b14e1d3309ad4db8a4ac2cf10ff0ae4f0564e0d2590",
+      "bytes": 255456
+    },
+    "vcsl/snare/Snare2_HitSN_v6_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v6_rr1_Mid.wav",
+      "sha256": "ca0ee01347176a65f9d7e361203a61e736fa14acb2a743df355a4bded1ee40bd",
+      "bytes": 240660
+    },
+    "vcsl/snare/Snare2_HitSN_v6_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v6_rr2_Mid.wav",
+      "sha256": "95105301c2eff6649f1983c7b2cb4bed78b310b500c7d5a0f708ac0c9c45edfc",
+      "bytes": 241176
+    },
+    "vcsl/snare/Snare2_HitSN_v7_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v7_rr1_Mid.wav",
+      "sha256": "e63d9ebb2d1f85456d7554448b52330031051bc45db36f5fe08ef5f5149421e6",
+      "bytes": 271480
+    },
+    "vcsl/snare/Snare2_HitSN_v7_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v7_rr2_Mid.wav",
+      "sha256": "c0ee12638c1255152d9e914c61bdbe6ff145e396d21302a91e33495d50335383",
+      "bytes": 258420
+    },
+    "vcsl/snare/Snare2_HitSN_v9_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v9_rr1_Mid.wav",
+      "sha256": "ea0adea05227c09002fb7305613cb2877003dc3ba3467d3b2d60c20f5664d59a",
+      "bytes": 294868
+    },
+    "vcsl/snare/Snare2_HitSN_v9_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v9_rr2_Mid.wav",
+      "sha256": "2a522774cab32b7c8ad6ea8d40ce5a4a36720c9735a653b4ee9c1c0c5294e61d",
+      "bytes": 272616
+    },
+    "vcsl/snare/Snare2_stick_v1_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_stick_v1_rr1_Mid.wav",
+      "sha256": "98258bc22a11aca0a8eb1d50a2e0a82cbe6357d30e0b55116db0b188015ff648",
+      "bytes": 132812
+    },
+    "vcsl/snare/Snare2_stick_v1_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_stick_v1_rr2_Mid.wav",
+      "sha256": "a51181312d92049c2082d116efe96a32305b41c81c06b6c254a94cd2efd08bb1",
+      "bytes": 150356
+    },
+    "vcsl/tambourine/Tamb1_Hit_v1_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Tambourine 1/Tamb1_Hit_v1_rr1_Mid.wav",
+      "sha256": "6fd5af9ec2d94c3b66fa871aecbc2e2844eea155a668fd0f15f07d59ae67dd40",
+      "bytes": 338496
+    },
+    "vcsl/tambourine/Tamb1_Hit_v2_rr1_Mid.wav": {
+      "source": "Idiophones/Struck Idiophones/Tambourine 1/Tamb1_Hit_v2_rr1_Mid.wav",
+      "sha256": "885ebf1d70f8e888f576682e4e4112b92b69649162f392c83b3379c91a09cf41",
+      "bytes": 293256
+    },
+    "vcsl/tom-high/TomH_HitM_v2_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 1/Mallet/TomH_HitM_v2_rr1_Mid.wav",
+      "sha256": "8bb344fbbc163e4a028551b4e9a12ff899e36c01d7d3f8c1ab30646078796497",
+      "bytes": 444968
+    },
+    "vcsl/tom-high/TomH_HitM_v2_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 1/Mallet/TomH_HitM_v2_rr2_Mid.wav",
+      "sha256": "fb76f451133cfdc9f66ca6e45cf705be2c5e66191f0cc66c973a720f1418bb0f",
+      "bytes": 462680
+    },
+    "vcsl/tom-high/TomH_HitM_v3_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 1/Mallet/TomH_HitM_v3_rr1_Mid.wav",
+      "sha256": "f39c17ddb76504dcab90d0d14bbf2b722eda87eb533401a662a3ef454b76bea0",
+      "bytes": 497412
+    },
+    "vcsl/tom-high/TomH_HitM_v3_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 1/Mallet/TomH_HitM_v3_rr2_Mid.wav",
+      "sha256": "835e8c61672c0ab87afab3c65de5c50f168fbebeac4013e2e919d4d7a1f4d360",
+      "bytes": 460900
+    },
+    "vcsl/tom-high/TomH_HitM_v4_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 1/Mallet/TomH_HitM_v4_rr1_Mid.wav",
+      "sha256": "a57ac74e93079d72c0cde41ac97391db757a450a167e85f115b7248a726c9b02",
+      "bytes": 462416
+    },
+    "vcsl/tom-high/TomH_HitM_v4_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 1/Mallet/TomH_HitM_v4_rr2_Mid.wav",
+      "sha256": "9264c223229aeb76b73302d3e6be15e147e6a346f0260556d9a9615b8c52ea0c",
+      "bytes": 493220
+    },
+    "vcsl/tom-low/TomL_HitM_v2_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 2/Mallet/TomL_HitM_v2_rr1_Mid.wav",
+      "sha256": "3da7679d836e8f019815dd3a290e3f7153cab4d0f8880dca0bc6679aa257592c",
+      "bytes": 398900
+    },
+    "vcsl/tom-low/TomL_HitM_v2_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 2/Mallet/TomL_HitM_v2_rr2_Mid.wav",
+      "sha256": "ef20489db16168b0b94c0957c85fc74863ba3e4a7d5a825502692f932962b6ce",
+      "bytes": 451772
+    },
+    "vcsl/tom-low/TomL_HitM_v3_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 2/Mallet/TomL_HitM_v3_rr1_Mid.wav",
+      "sha256": "d882ba9eb8b094519f7d4defd832c375b49fa12f2c094979a7ed3b559ba25b21",
+      "bytes": 421476
+    },
+    "vcsl/tom-low/TomL_HitM_v3_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 2/Mallet/TomL_HitM_v3_rr2_Mid.wav",
+      "sha256": "d0aecf41b4af5f164e4900858a975c79a73455ccad90c64a709722d5baaf11f1",
+      "bytes": 417812
+    },
+    "vcsl/tom-low/TomL_HitM_v4_rr1_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 2/Mallet/TomL_HitM_v4_rr1_Mid.wav",
+      "sha256": "8ee010beab0edb64ce7f580a433f4e4ab1d07874dcf8e74b0edad9e0fe8b4639",
+      "bytes": 416188
+    },
+    "vcsl/tom-low/TomL_HitM_v4_rr2_Mid.wav": {
+      "source": "Membranophones/Struck Membranophones/Tom 2/Mallet/TomL_HitM_v4_rr2_Mid.wav",
+      "sha256": "877ff4b4c3baf395cb8fb2530bb98dcbd385ec059c5a4b0f5c5ddc9078202112",
+      "bytes": 554524
+    },
+    "vcsl/woodblock/wood_click3_vl1.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click3_vl1.wav",
+      "sha256": "b38a06f037de70bb2cf98fd89f06af8d104d4123773d2e625691189a67495be5",
+      "bytes": 186874
+    },
+    "vcsl/woodblock/wood_click3_vl2.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click3_vl2.wav",
+      "sha256": "eb93ee3fa02d66588a48b34d8b686638dd4e90433c8c75f2397a3dbc35c61d10",
+      "bytes": 244570
+    },
+    "vcsl/woodblock/wood_click_f_rr1.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_f_rr1.wav",
+      "sha256": "86b690a393ad62d65dc6832948adb0cc164fe22f544a8065809f000c65d615fc",
+      "bytes": 497338
+    },
+    "vcsl/woodblock/wood_click_f_rr2.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_f_rr2.wav",
+      "sha256": "661e25cc1233a9d3d85bde188762d23fbbd69ac6af68af5c8db8fdd36fe25608",
+      "bytes": 516568
+    },
+    "vcsl/woodblock/wood_click_ff.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_ff.wav",
+      "sha256": "9a911c66212d50a09494821bf9af8ce6e007612e232b5905f838348cb1d63b75",
+      "bytes": 200608
+    },
+    "vcsl/woodblock/wood_click_mp.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_mp.wav",
+      "sha256": "00b76f9fe96c118f29dfc69866c12ec11f2e1264f6cb9c0b36912c2210b015fe",
+      "bytes": 134674
+    },
+    "vcsl/woodblock/wood_click_pp_rr1.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_pp_rr1.wav",
+      "sha256": "2c21a5de6f3ddd51ce851325ba6caa4a187422c51299da7b2fdc4f51ae5e9ee1",
+      "bytes": 107200
+    },
+    "vcsl/woodblock/wood_click_pp_rr2.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_pp_rr2.wav",
+      "sha256": "94db112d562381852c6f7356a85090db25980ec6c9f1dbda0615bafac0fad7db",
+      "bytes": 107200
+    },
+    "vcsl/woodblock/wood_click_pp_rr3.wav": {
+      "source": "Idiophones/Struck Idiophones/Woodblock/wood_click_pp_rr3.wav",
+      "sha256": "ecd77e89be7f5ba0b875825ee61902f54736014e3892248299af6b70fff5feb1",
+      "bytes": 82468
+    }
+  }
+}
