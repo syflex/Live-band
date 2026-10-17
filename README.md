@@ -11,6 +11,8 @@ track. It also passes the voice through, plays a test instrument through sfizz,
 measures round-trip latency and shows live diagnostics. No band yet: that is
 Phase 2.
 
+![LiveBand following a sung melody](docs/images/phase1/app-live-pitch.png)
+
 On 40 clips of real singing (the vocadito dataset), 97% of pitch frames are within
 50 cents of the truth and the onset F-measure is 0.76. See the
 [Phase 1 results](docs/results/PHASE1_RESULTS.md).

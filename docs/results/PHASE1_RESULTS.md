@@ -17,6 +17,26 @@ own test set (Nigerian singers, Nigerian songs) still has to be recorded; see
 [RECORDING_GUIDE.md](../RECORDING_GUIDE.md). These numbers show the analysis works on real
 voices. They need to be repeated on that test set.
 
+## Screenshots
+
+The app, listening to a vocadito clip as its voice input. These were taken on Linux
+in the cloud test environment, with a virtual screen and a virtual sound device
+running at real-time speed. Real-hardware numbers come from the Windows test in
+[WINDOWS_SETUP.md](../WINDOWS_SETUP.md).
+
+![LiveBand following a sung melody: the note display shows D#4, and the pitch graph shows the last 6 seconds with onset lines](../images/phase1/app-live-pitch.png)
+
+The same clip while a session records (the button reads Stop, the click shows on the
+output meter, and there are no recording dropouts):
+
+![LiveBand recording a session with a click](../images/phase1/app-recording.png)
+
+All 50 unit and engine tests, and the evaluation on vocadito:
+
+![ctest output: 50 of 50 tests passed](../images/phase1/unit-tests.png)
+
+![Evaluation output: pitch and onset targets met](../images/phase1/vocadito-evaluation.png)
+
 ## The test material
 
 [vocadito](https://doi.org/10.5281/zenodo.5578807) (Bittner, Pasalo, Bosch, Meseguer Brocal
@@ -32,6 +52,16 @@ repository.
 
 `lb-analyze` runs the same `VocalAnalyzer` the app uses, and `eval_pitch.py` compares
 its frames with the reference pitch track.
+
+![LiveBand's pitch line over the hand-corrected pitch band for the first 12 seconds of vocadito_17, with annotated note starts and detected onsets below](../images/phase1/pitch-vs-annotation.png)
+
+The spike near 3 seconds is a real glitch: for seven frames (56 ms), YIN reported three
+times the true frequency (828 Hz instead of 276 Hz), an octave and a fifth too high. The
+sub-octave check only looks at twice the period, and the 5-frame outlier smoothing cannot
+remove a run that long. Extending the check to three times the period is a candidate
+improvement for Phase 3, where key detection will be sensitive to such errors.
+
+![Share of pitch frames more than 50 cents off for each of the 40 clips, from 0.4% to 17%, with the 5% target line](../images/phase1/pitch-errors-per-clip.png)
 
 | Measure | Raw YIN | Smoothed (shown in the app) |
 |---|---|---|
@@ -95,6 +125,8 @@ callback at a 128-sample buffer, so its cost lands unevenly. The engine tests ch
 none of this allocates memory.
 
 ## How to reproduce
+
+The charts come from `tools/python/plot_results.py`; the commands are in its help text.
 
 ```
 cmake --preset linux-release && cmake --build --preset linux-release --target lb-analyze

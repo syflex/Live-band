@@ -9,7 +9,9 @@ void NoteDisplay::addFrame(const lb::AnalysisFrame& frame)
     if (frame.isVoiced() && frame.midiPitch > 0.0f)
     {
         midi_ = frame.midiPitch;
-        frequencyHz_ = frame.f0Hz;
+        // From the smoothed pitch, like the note name: the raw estimate can be a glitch the
+        // smoothing has already replaced.
+        frequencyHz_ = lb::midiToFrequency(frame.midiPitch);
         periodicity_ = frame.periodicity;
         framesSinceVoiced_ = 0;
     }

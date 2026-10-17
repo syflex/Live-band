@@ -5,3 +5,4 @@ scipy
 soundfile
 librosa
 mir_eval
+matplotlib  # only for plot_results.py

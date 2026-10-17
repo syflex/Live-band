@@ -49,6 +49,7 @@ Checked against each project's licence file in the pinned checkout.
 | [librosa](https://librosa.org) | from `tools/python/requirements.txt` | ISC |
 | [mir_eval](https://github.com/mir-evaluation/mir_eval) | from `tools/python/requirements.txt` | MIT |
 | soundfile | from `tools/python/requirements.txt` | BSD-3-Clause |
+| [matplotlib](https://matplotlib.org) | from `tools/python/requirements.txt` | Matplotlib licence (PSF-style, BSD-compatible) |
 
 ## Evaluation data (downloaded, not committed)
 

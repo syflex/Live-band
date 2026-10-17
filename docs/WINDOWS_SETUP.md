@@ -100,6 +100,8 @@ detection, and other apps can block exclusive mode. Do this once:
 
 ## 5. Try the live note display (Phase 1)
 
+![The note display and pitch graph](images/phase1/app-live-pitch.png)
+
 1. Put the headset on and sing a few long notes. The big note name shows what you
    are singing, the needle shows how sharp or flat you are, and the moving graph
    shows your pitch over the last 6 seconds.
