@@ -11,12 +11,18 @@ Measured on 17 October 2026, on the `phase-2-play` branch.
 | The same, measured through the loopback on the Lenovo laptop | not yet measured | < 10 ms, < 0.5% | to do |
 | No hanging notes | every note-on released, after 30 simulated minutes of random section changes and fills, and after stops and panics | none | met |
 | No drift | the last beat of a simulated 30 minutes within **1 sample** of the ideal | < 1 sample | met |
-| 30-minute soak in file-input mode with the band playing | running | 0 xruns, 0 overruns | pending |
+| 30-minute soak, file input, band playing: the engine's own work | worst callback **33%** of its time budget in CPU time, median 2.3%; 0 over budget in 674,813 callbacks | under 100% | met |
+| The same soak in the running app on the cloud machine | 0 driver dropouts; **45 overruns** in 678,738 callbacks (0.007%), from the OS pausing the audio thread | 0 xruns, 0 overruns | not met here; to repeat on the laptop |
 
 Like Phase 1, these measurements come from the cloud test machine: engine tests that
 drive the audio engine with a simulated device, and the app itself running at real-time
 speed on a virtual sound device. The laptop test in
 [WINDOWS_SETUP.md](../WINDOWS_SETUP.md) (section 6) repeats the timing on real hardware.
+
+The soak overruns are explained under [Soak](#soak): the engine never needs more than a
+third of its time, but the cloud machine runs the app without real-time priority, so
+other work can pause the audio thread. On Windows, JUCE runs the audio thread at the
+"Pro Audio" priority, and the soak has to be repeated there.
 
 ## What the band does
 
@@ -105,19 +111,54 @@ Notes are placed on their exact sample inside each audio block.
 **Steering.** Taps while the band plays move it onto the new tempo at once and onto the
 new beat gradually: at most 8% faster or slower, settling with a one-beat time constant.
 In the engine test, a singer settling 6% slower and 120 ms off the band's beat has the
-band on their beat, within 3 ms, 20 beats later.
+band on their beat 20 beats later (0.01 ms off the tapped beat grid).
 
 **Still to measure:** the whole chain on the laptop, including the keyboard's own delay
 in reporting a key press. `tools/python/check_tap_entry.py` measures it from a session
 recorded with the mic against the ear cup (WINDOWS_SETUP.md, section 6).
 
+## Soak
+
+Two 30-minute runs, both in Release with a 128-sample buffer (2.7 ms per callback), the
+voice analysis listening to a looping vocadito clip, and the band playing Afrobeats at
+104 BPM, changing section and filling every 30 seconds.
+
+**The engine on its own** (`liveband_engine_tests "[soak]"`), as fast as the machine
+allows, timing each callback both by the wall clock and by the CPU time its thread used:
+
+| | Median | 99.9th percentile | Worst | Over budget |
+|---|---|---|---|---|
+| CPU time | 2.3% | 7.8% | 32.7% | 0 |
+| Wall-clock time | 2.3% | 9.4% | 368% | 4 |
+
+The four wall-clock overruns each used under 0.31 ms of CPU: the thread was not
+working, it was waiting for the OS to give it back the processor.
+
+**The running app**, on the virtual sound device, for 1,801 seconds of real time
+(785 bars):
+
+![The app's diagnostics after 30 minutes: average callback load 4.2%, 45 overruns, no driver dropouts](../images/phase2/soak-report.png)
+
+The average load is 4.2%, the driver reported no dropouts, no analysis frames were
+dropped, and the band ended at bar 786 at the tempo it started with. But 87 callbacks
+took over 80% of their time and 45 over 100%, with one at 495% (13 ms). The engine
+test above shows the engine's work never comes near that. The container gives no
+process real-time priority (`ulimit -r` is 0, and every thread of the app runs at
+normal priority), so the audio thread waits behind the app's own window drawing, the
+sound server and anything else on the machine.
+
+So the exit criterion is **met for the engine but not shown for the app**: the app soak
+has to be repeated on the laptop (WINDOWS_SETUP.md, section 4, step 7, with the band
+playing), where WASAPI exclusive mode and MMCSS give the audio thread priority. The
+Phase 5 soak with LatencyMon is the final check.
+
 ## Cost
 
 | Measure | Value |
 |---|---|
-| `lb-render`, Release, 42 s of Afrobeats through the full kit | 4.7 s on one cloud vCPU, kit loading included (about 9× real time) |
-| App, Release, 128-sample buffer, band plus voice analysis | average callback load 4.7%, peak 28.6% (one vCPU) |
-| Soak, 30 minutes | running |
+| `lb-render`, Release, 42 s of Afrobeats through the full kit | 4.7 s on one core of the cloud machine (Xeon, 2.1 GHz), kit loading included: about 9× real time |
+| App, Release, 128-sample buffer, band plus voice analysis | average callback load 4.2% over 30 minutes |
+| Engine, CPU time per callback | median 2.3%, worst 32.7% of the budget |
 
 A Debug build renders the kit slower than real time (sfizz is not optimized in Debug),
 so the app must be built as Release for playing.
@@ -140,6 +181,7 @@ output above -1 dBFS.
 python tools/python/fetch_assets.py
 cmake --preset linux-release && cmake --build --preset linux-release
 ctest --preset linux-release
+out/build/linux-release/liveband_engine_tests_artefacts/Release/liveband_engine_tests "[soak]"
 out/build/linux-release/lb-render_artefacts/Release/lb-render --style assets/grooves/afrobeats \
     --kit assets/sfz/afro-kit/afro-kit.sfz --plan Verse:8,Chorus:8 --count-in --out afrobeats.wav
 python tools/python/plot_groove.py --out groove.png
@@ -157,5 +199,7 @@ the packages in `tools/python/requirements.txt`).
 - Keyboard taps include the keyboard's delay, which the app cannot see; a MIDI pedal
   avoids it. If the laptop test shows a steady lateness, a tap offset setting can
   remove it.
+- The app soak on the laptop: 0 overruns and 0 dropouts over 30 minutes with the band
+  playing.
 - Phase 4 checks that re-tapping re-locks within one bar: today a half-beat phase
   correction takes up to about six beats.

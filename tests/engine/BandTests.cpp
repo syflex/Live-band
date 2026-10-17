@@ -1,6 +1,7 @@
 #include "FakeDevice.h"
 #include "common/RtAllocGuard.h"
 #include "engine/AudioEngine.h"
+#include "engine/AudioFileLoader.h"
 #include "engine/BandController.h"
 #include "engine/GrooveLoader.h"
 
@@ -8,9 +9,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <random>
 #include <vector>
+
+#if defined(__linux__)
+#include <time.h>
+#endif
 
 using Catch::Approx;
 using lbtest::blockSize;
@@ -21,6 +27,19 @@ namespace
 const juce::File assets(LB_ASSETS_DIR);
 const juce::File afrobeats = assets.getChildFile("grooves/afrobeats");
 const juce::File afroKit = assets.getChildFile("sfz/afro-kit/afro-kit.sfz");
+
+// CPU time used by this thread, so that time the OS gave to other processes is not counted.
+// Falls back to wall-clock time where it is not available.
+double threadCpuSeconds()
+{
+#if defined(__linux__)
+    timespec ts {};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return static_cast<double>(ts.tv_sec) + 1e-9 * static_cast<double>(ts.tv_nsec);
+#else
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+#endif
+}
 
 // The engine reads this clock; the harness moves it to each callback's start time.
 double fakeNow = 0.0;
@@ -59,8 +78,16 @@ struct BandHarness
             fakeNow = static_cast<double>(sample) / sampleRate + lateness(random);
             const float* inputs[] = { mic.data() };
             float* outputs[] = { left.data(), right.data() };
+            const auto before = std::chrono::steady_clock::now();
+            const double cpuBefore = callbackSeconds != nullptr ? threadCpuSeconds() : 0.0;
             engine.audioDeviceIOCallbackWithContext(inputs, 1, outputs, 2, blockSize, {});
-            output.insert(output.end(), left.begin(), left.end());
+            if (callbackSeconds != nullptr)
+            {
+                callbackSeconds->push_back(static_cast<float>(std::chrono::duration<double>(std::chrono::steady_clock::now() - before).count()));
+                callbackCpuSeconds.push_back(static_cast<float>(threadCpuSeconds() - cpuBefore));
+            }
+            if (keepOutput)
+                output.insert(output.end(), left.begin(), left.end());
             sample += blockSize;
             lb::BeatTick tick;
             while (engine.popBeatTick(tick))
@@ -84,6 +111,9 @@ struct BandHarness
     lb::AudioEngine engine;
     lb::BandController controller { engine };
     std::vector<float> output; // left channel
+    bool keepOutput = true;
+    std::vector<float>* callbackSeconds = nullptr; // the time each callback took, if set
+    std::vector<float> callbackCpuSeconds;         // and the CPU time it used
     std::vector<lb::BeatTick> ticks;
     std::int64_t sample = 0;
     std::mt19937 random { 5 };
@@ -243,6 +273,7 @@ TEST_CASE("Band: tapping while it plays pulls it onto the new tempo and beat")
     REQUIRE(h.ticks.size() > 4);
     const double heard = BandHarness::heardAt(h.ticks.back().sampleTime);
     const double offGrid = std::remainder(heard - first, period);
+    WARN("20 beats after the taps, the band's beats are " << offGrid * 1000.0 << " ms from the tapped beat grid");
     CHECK(std::abs(offGrid) < 0.003);
 }
 
@@ -324,6 +355,70 @@ TEST_CASE("Band: the callback does not allocate while the band plays, and the li
     const float peak = *std::max_element(h.output.begin(), h.output.end(), [](float a, float b) { return std::abs(a) < std::abs(b); });
     CHECK(std::abs(peak) <= juce::Decibels::decibelsToGain(-1.0f) + 1e-6f);
     CHECK(std::abs(peak) > 0.5f);
+    CHECK(h.engine.droppedCommands() == 0);
+    CHECK(h.engine.droppedBeatTicks() == 0);
+}
+
+// Not run by default (about 30 minutes of audio; a few minutes in Release):
+//   liveband_engine_tests "[soak]"
+// Measures how long each callback takes with the full kit, the band changing section and
+// filling every 30 seconds, and the voice analysis running on a voice file, as fast as the
+// machine allows. A callback slower than its 2.7 ms of audio would be an overrun.
+TEST_CASE("Band soak: 30 minutes of band, voice file and analysis", "[.soak]")
+{
+    BandHarness h;
+    h.keepOutput = false;
+    std::vector<float> seconds;
+    seconds.reserve(700000);
+
+    const auto clip = assets.getParentDirectory().getChildFile("testdata/external/vocadito/Audio/vocadito_17.wav");
+    juce::String error;
+    std::vector<float> voice;
+    if (auto loaded = lb::loadMonoAudio(clip, sampleRate, error))
+        voice = std::move(*loaded);
+    else
+        for (int i = 0; i < static_cast<int>(sampleRate) * 10; ++i) // a stand-in voice: a 220 Hz tone
+            voice.push_back(0.3f * static_cast<float>(std::sin(2.0 * 3.141592653589793 * 220.0 * i / sampleRate)));
+    h.engine.setFileInput(std::move(voice), "soak voice");
+    h.engine.setInputSource(lb::AudioEngine::InputSource::file);
+
+    h.runUntil(0.5);
+    h.controller.setTempoBpm(104.0);
+    h.controller.startStop();
+    h.callbackSeconds = &seconds;
+    constexpr double minutes = 30.0;
+    for (double t = 30.0; t <= minutes * 60.0; t += 30.0)
+    {
+        h.runUntil(t);
+        if (static_cast<int>(t / 30.0) % 2 == 1)
+            h.controller.next();
+        else
+            h.controller.fill();
+    }
+    REQUIRE(h.engine.bandStatus().state == lb::BandState::playing);
+
+    // Where in the music the slowest callbacks fell, for diagnosis.
+    const double budget = blockSize / sampleRate;
+    const auto firstTimed = static_cast<double>(h.sample) / blockSize - static_cast<double>(seconds.size());
+    juce::String slowest;
+    for (std::size_t i = 0; i < seconds.size(); ++i)
+        if (seconds[i] > budget)
+            slowest << juce::String((firstTimed + static_cast<double>(i)) * blockSize / sampleRate, 2) << " s (wall " << juce::String(seconds[i] * 1000.0f, 1)
+                    << " ms, CPU " << juce::String(h.callbackCpuSeconds[i] * 1000.0f, 2) << " ms); ";
+
+    const auto summary = [&](std::vector<float> times, const char* what) {
+        std::sort(times.begin(), times.end());
+        const auto at = [&](double q) { return times[static_cast<std::size_t>(q * static_cast<double>(times.size() - 1))] / budget * 100.0; };
+        const auto over = times.end() - std::upper_bound(times.begin(), times.end(), static_cast<float>(budget));
+        WARN(what << ", " << times.size() << " callbacks: median " << at(0.5) << " %, 99.9th percentile " << at(0.999) << " %, worst "
+                  << at(1.0) << " % of the time budget; " << over << " over budget");
+        return over;
+    };
+    summary(seconds, "Wall-clock time");
+    const auto overBudget = summary(h.callbackCpuSeconds, "CPU time");
+    if (slowest.isNotEmpty())
+        WARN("Callbacks slower than real time (wall clock): " << slowest);
+    CHECK(overBudget == 0); // the engine's own work always fits; wall-clock spikes are the OS running something else
     CHECK(h.engine.droppedCommands() == 0);
     CHECK(h.engine.droppedBeatTicks() == 0);
 }

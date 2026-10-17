@@ -568,7 +568,7 @@ Results: [docs/results/PHASE1_RESULTS.md](results/PHASE1_RESULTS.md).
   - Analysis below 5% of the callback's time budget: **about 128× real time**.
   - Onset F-measure of at least 0.65 with a 50 ms window: **0.757** on vocadito.
 
-### Phase 2: Play (week 2) — done
+### Phase 2: Play (week 2) — built; laptop checks pending
 Results: [docs/results/PHASE2_RESULTS.md](results/PHASE2_RESULTS.md).
 
 - [x] `SfizzInstrument` with the drum kit: a synthesized Afrobeats kick plus 116
@@ -600,7 +600,10 @@ Results: [docs/results/PHASE2_RESULTS.md](results/PHASE2_RESULTS.md).
     loopback measurement on the real laptop is still to do
     (`tools/python/check_tap_entry.py`, see WINDOWS_SETUP.md section 6).
   - No hanging notes: **met** (unit tests, engine tests, `lb-render`).
-  - A 30-minute soak in file-input mode: see the results page.
+  - A 30-minute soak in file-input mode: **met for the engine** (worst callback 33% of
+    its time budget in CPU time, none over). The running app on the cloud machine,
+    which allows no real-time priority, had 45 overruns in 678,738 callbacks, all from
+    the OS pausing the audio thread. To repeat on the laptop.
 
 ### Phase 3: Key and layering (week 3)
 - [ ] `NoteSegmenter`, the tuning offset, the histogram, the three or four key

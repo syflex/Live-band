@@ -105,8 +105,10 @@ detection, and other apps can block exclusive mode. Do this once:
    ear cup, click **Measure latency**, then **Start**. The app plays seven short
    chirps. The result appears as **Measured round trip**. If it says the chirps
    were not heard, hold the mic closer and turn the volume up.
-7. Leave the app running for 10–30 minutes, with test notes now and then.
-   Watch **Overruns** and **Driver-reported dropouts**; both should stay at 0.
+7. Leave the app running for 30 minutes with the band playing (section 6; press **Enter**
+   to start it, and **N** now and then to change section). Click **Reset peaks**
+   first. Watch **Overruns** and **Driver-reported dropouts**; both should stay
+   at 0.
 8. Click **Copy report** and paste the text into the chat or a GitHub issue.
 
 ## 5. Try the live note display (Phase 1)

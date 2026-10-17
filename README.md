@@ -4,13 +4,14 @@ An offline Windows app that listens to a live singer and plays drums,
 percussion, bass and keys that follow the singer's key and tempo. Built for the
 Nigerian market: Afrobeats and worship styles first.
 
-**Status: Phase 2 done** (the band plays). Tap the beat four times and an
+**Status: Phase 2 built** (the band plays; two checks wait for the laptop). Tap the beat four times and an
 Afrobeats drum and percussion groove comes in on the fifth, or start it with a
 count-in. Change between verse and chorus with a fill, steer the tempo by tapping,
 and stop with a final hit, from the keyboard or a MIDI pedal. The app also hears the
 singer (Phase 1): it shows the note being sung and a pitch graph, finds where notes
 start, can listen to a voice file instead of the mic, and records test sessions. Key
-detection, bass and keys come in Phase 3.
+detection, bass and keys come in Phase 3. The tap timing through a loopback and a
+30-minute soak with real-time priority still have to be measured on the laptop.
 
 ![LiveBand playing the Afrobeats groove while it follows a sung melody](docs/images/phase2/app-band-playing.png)
 

@@ -85,22 +85,24 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    heights = [len(rows_of(groove.PATTERNS[name])) + 1.5 for _, name in PANELS]
-    fig = plt.figure(figsize=(11, 0.30 * (heights[0] + heights[1] + max(heights[2:])) + 1.6), dpi=150, facecolor=SURFACE)
-    grid = fig.add_gridspec(3, 2, height_ratios=[heights[0], heights[1], max(heights[2:])],
-                            left=0.14, right=0.98, top=0.90, bottom=0.04, hspace=0.55, wspace=0.28)
+    rows = [len(rows_of(groove.PATTERNS[name])) for _, name in PANELS]
+    ratios = [rows[0], rows[1], max(rows[2:])]
+    inches = 0.27 * sum(ratios) + 3.2  # rows plus titles, tick labels and the heading
+    fig = plt.figure(figsize=(11, inches), dpi=150, facecolor=SURFACE)
+    grid = fig.add_gridspec(3, 2, height_ratios=ratios, left=0.14, right=0.98, top=1 - 1.25 / inches, bottom=0.35 / inches,
+                            hspace=0.9 / (0.27 * sum(ratios) / 3), wspace=0.28)
     draw_panel(fig.add_subplot(grid[0, :]), "Verse (two bars)", groove.PATTERNS["verse.mid"])
     draw_panel(fig.add_subplot(grid[1, :]), "Chorus (two bars)", groove.PATTERNS["chorus.mid"])
     draw_panel(fig.add_subplot(grid[2, 0]), "Verse fill (one bar)", groove.PATTERNS["fill-verse.mid"])
     draw_panel(fig.add_subplot(grid[2, 1]), "Chorus fill (one bar)", groove.PATTERNS["fill-chorus.mid"])
 
     style = groove.STYLE
-    fig.text(0.14, 0.965, f"{style['name']} groove: every hit, by sixteenth note", color=INK, fontsize=15, fontweight="bold")
-    fig.text(0.14, 0.938, f"{style['tempo']['default']} BPM (range {style['tempo']['min']} to {style['tempo']['max']}), "
+    fig.text(0.14, 1 - 0.45 / inches, f"{style['name']} groove: every hit, by sixteenth note", color=INK, fontsize=15, fontweight="bold")
+    fig.text(0.14, 1 - 0.75 / inches, f"{style['tempo']['default']} BPM (range {style['tempo']['min']} to {style['tempo']['max']}), "
              f"swing {style['swing']:.2f}. Numbers are beats; bigger dots are louder.", color=INK_SECONDARY, fontsize=10)
     handles = [plt.Line2D([], [], marker="o", linestyle="", markersize=8, color=colour, label=f"{layer} layer")
                for layer, colour in LAYER_COLOURS.items()]
-    legend = fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.98, 0.975), ncol=2, frameon=False, fontsize=10)
+    legend = fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.98, 1 - 0.3 / inches), ncol=2, frameon=False, fontsize=10)
     for text in legend.get_texts():
         text.set_color(INK_SECONDARY)
 
