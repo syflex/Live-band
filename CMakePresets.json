@@ -37,6 +37,12 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
     },
     {
+      "name": "linux-release",
+      "displayName": "Linux Release (full app, for tools and benchmarks)",
+      "inherits": "linux-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
       "name": "linux-core",
       "displayName": "Linux core library and tests only",
       "inherits": "linux-base",
@@ -47,12 +53,14 @@
     { "name": "windows-debug",   "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
     { "name": "linux-debug",     "configurePreset": "linux-debug" },
+    { "name": "linux-release",   "configurePreset": "linux-release" },
     { "name": "linux-core",      "configurePreset": "linux-core" }
   ],
   "testPresets": [
     { "name": "windows-debug",   "configurePreset": "windows-debug",   "output": { "outputOnFailure": true } },
     { "name": "windows-release", "configurePreset": "windows-release", "output": { "outputOnFailure": true } },
     { "name": "linux-debug",     "configurePreset": "linux-debug",     "output": { "outputOnFailure": true } },
+    { "name": "linux-release",   "configurePreset": "linux-release",   "output": { "outputOnFailure": true } },
     { "name": "linux-core",      "configurePreset": "linux-core",      "output": { "outputOnFailure": true } }
   ]
 }

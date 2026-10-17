@@ -1,0 +1,7 @@
+# Offline evaluation tools. Install into a virtual environment:
+#   python -m venv .venv && .venv/bin/pip install -r tools/python/requirements.txt
+numpy
+scipy
+soundfile
+librosa
+mir_eval

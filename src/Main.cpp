@@ -7,13 +7,15 @@ namespace
 class MainWindow final : public juce::DocumentWindow
 {
 public:
-    explicit MainWindow(const juce::String& name)
+    MainWindow(const juce::String& name, const juce::String& commandLine)
         : DocumentWindow(name,
                          juce::Desktop::getInstance().getDefaultLookAndFeel().findColour(ResizableWindow::backgroundColourId),
                          DocumentWindow::allButtons)
     {
         setUsingNativeTitleBar(true);
-        setContentOwned(new MainComponent(), true);
+        auto* content = new MainComponent();
+        setContentOwned(content, true);
+        content->handleCommandLine(commandLine);
         setResizable(true, true);
         centreWithSize(getWidth(), getHeight());
         setVisible(true);
@@ -35,9 +37,9 @@ public:
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
     bool moreThanOneInstanceAllowed() override { return false; }
 
-    void initialise(const juce::String&) override
+    void initialise(const juce::String& commandLine) override
     {
-        mainWindow_ = std::make_unique<MainWindow>(getApplicationName());
+        mainWindow_ = std::make_unique<MainWindow>(getApplicationName(), commandLine);
     }
 
     void shutdown() override
