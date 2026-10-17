@@ -7,6 +7,17 @@
 
 namespace lb
 {
+namespace
+{
+enum ScratchChannel
+{
+    probeChannel,
+    clickChannel,
+    fileChannel,
+    silenceChannel,
+    numScratchChannels
+};
+} // namespace
 
 bool AudioEngine::loadInstrument(const juce::File& sfzFile)
 {
@@ -15,25 +26,77 @@ bool AudioEngine::loadInstrument(const juce::File& sfzFile)
     return ok;
 }
 
+void AudioEngine::setFileInput(std::vector<float> samples, const juce::String& name)
+{
+    fileInput_ = std::move(samples);
+    fileInputName_ = fileInput_.empty() ? juce::String() : name;
+    filePosition_ = 0;
+}
+
+void AudioEngine::setInputSource(InputSource source) noexcept
+{
+    if (source == InputSource::file && inputSource_.load() != InputSource::file)
+        rewindFile_.store(true);
+    inputSource_.store(source);
+}
+
 void AudioEngine::noteOn(int note, int velocity) noexcept
 {
-    pushNoteEvent({ NoteEvent::Type::on, static_cast<std::uint8_t>(note), static_cast<std::uint8_t>(velocity) });
+    Command command;
+    command.type = Command::Type::noteOn;
+    command.note = static_cast<std::uint8_t>(note);
+    command.velocity = static_cast<std::uint8_t>(velocity);
+    pushCommand(command);
 }
 
 void AudioEngine::noteOff(int note) noexcept
 {
-    pushNoteEvent({ NoteEvent::Type::off, static_cast<std::uint8_t>(note), 0 });
+    Command command;
+    command.type = Command::Type::noteOff;
+    command.note = static_cast<std::uint8_t>(note);
+    pushCommand(command);
 }
 
 void AudioEngine::allNotesOff() noexcept
 {
-    pushNoteEvent({ NoteEvent::Type::allOff, 0, 0 });
+    Command command;
+    command.type = Command::Type::allNotesOff;
+    pushCommand(command);
 }
 
-void AudioEngine::pushNoteEvent(NoteEvent event) noexcept
+bool AudioEngine::startSession(const juce::File& folder, bool clickEnabled, const ClickSettings& click, juce::String& error)
 {
-    if (!noteEvents_.push(event))
-        droppedNoteEvents_.fetch_add(1, std::memory_order_relaxed);
+    const double rate = infoSampleRate_.load();
+    if (rate <= 0.0)
+    {
+        error = "No audio device is running.";
+        return false;
+    }
+    if (!recorder_.open(folder, rate, error))
+        return false;
+
+    Command command;
+    command.type = Command::Type::startSession;
+    command.clickEnabled = clickEnabled;
+    command.click = click;
+    pushCommand(command);
+    return true;
+}
+
+void AudioEngine::stopSession(juce::DynamicObject::Ptr metadata)
+{
+    Command command;
+    command.type = Command::Type::stopSession;
+    pushCommand(command);
+    // The recorder stops accepting audio straight away, even before the audio thread sees
+    // the command.
+    recorder_.close(metadata);
+}
+
+void AudioEngine::pushCommand(const Command& command) noexcept
+{
+    if (!commands_.push(command))
+        droppedCommands_.fetch_add(1, std::memory_order_relaxed);
 }
 
 AudioEngine::DeviceInfo AudioEngine::deviceInfo() const noexcept
@@ -47,10 +110,19 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     maxBlockSize_ = std::max(device->getCurrentBufferSizeSamples(), 1);
 
     instrumentBuffer_.setSize(2, maxBlockSize_);
-    probeBuffer_.setSize(1, maxBlockSize_);
+    scratch_.setSize(numScratchChannels, maxBlockSize_);
+    scratch_.clear();
     instrument_.prepare(sampleRate_, maxBlockSize_);
     probe_.prepare(sampleRate_);
+    analyzer_.prepare(sampleRate_);
+    analyzer_.reset(sampleTime_);
+    clickTrack_.prepare(sampleRate_);
     currentMonitorGain_ = 0.0f;
+
+    // A restart (possibly at a new sample rate) ends any running session; the UI notices
+    // that sessionStartSample() went back to -1 and closes the files.
+    sessionActive_ = false;
+    sessionStart_.store(-1);
 
     infoSampleRate_.store(sampleRate_);
     infoBufferSize_.store(device->getCurrentBufferSizeSamples());
@@ -80,15 +152,12 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputs, i
     if (maxBlockSize_ <= 0 || sampleRate_ <= 0.0)
         return;
 
-    // The voice comes from the first active input channel.
+    // The mic is the first active input channel.
     const float* mic = nullptr;
     for (int ch = 0; ch < numInputs && mic == nullptr; ++ch)
         mic = inputs[ch];
 
-    if (mic != nullptr)
-        raisePeak(inputPeak_, mic, numSamples);
-
-    applyNoteEvents();
+    applyCommands();
 
     // Drivers normally stay within the buffer size they reported, but split larger
     // callbacks so the preallocated buffers are never overrun.
@@ -103,26 +172,93 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputs, i
         raisePeak(outputPeak_, outputs[0], numSamples);
 
     activeVoices_.store(instrument_.activeVoices(), std::memory_order_relaxed);
+    sampleTime_ += numSamples;
+    publishedSampleTime_.store(sampleTime_, std::memory_order_relaxed);
 
     const auto elapsed = juce::Time::highResolutionTicksToSeconds(juce::Time::getHighResolutionTicks() - startTicks);
     stats_.record(elapsed, numSamples / sampleRate_);
 }
 
+void AudioEngine::applyCommands() noexcept
+{
+    Command command;
+    while (commands_.pop(command))
+    {
+        switch (command.type)
+        {
+            case Command::Type::noteOn:      instrument_.noteOn(0, command.note, command.velocity); break;
+            case Command::Type::noteOff:     instrument_.noteOff(0, command.note); break;
+            case Command::Type::allNotesOff: instrument_.allNotesOff(); break;
+
+            case Command::Type::startSession:
+                sessionActive_ = true;
+                sessionStart_.store(sampleTime_);
+                if (command.clickEnabled)
+                    clickTrack_.start(command.click, sampleTime_);
+                break;
+
+            case Command::Type::stopSession:
+                sessionActive_ = false;
+                sessionStart_.store(-1);
+                clickTrack_.stop();
+                break;
+        }
+    }
+}
+
+const float* AudioEngine::readFileInput(int numSamples) noexcept
+{
+    if (rewindFile_.exchange(false))
+        filePosition_ = 0;
+
+    float* out = scratch_.getWritePointer(fileChannel);
+    for (int i = 0; i < numSamples; ++i)
+    {
+        out[i] = fileInput_[filePosition_];
+        if (++filePosition_ >= fileInput_.size())
+            filePosition_ = 0; // loop
+    }
+    return out;
+}
+
 void AudioEngine::processChunk(const float* mic, float* const* outputs, int numOutputs, int offset, int numSamples) noexcept
 {
-    // While the latency probe runs, it owns the outputs: no voice, no instrument.
-    float* probeSignal = probeBuffer_.getWritePointer(0);
+    const std::int64_t chunkStart = sampleTime_ + offset;
+
+    // The voice: the mic, or the loaded file playing in a loop.
+    const bool useFile = inputSource_.load(std::memory_order_relaxed) == InputSource::file && !fileInput_.empty();
+    const float* voice = useFile ? readFileInput(numSamples) : mic;
+    if (voice != nullptr)
+        raisePeak(inputPeak_, voice, numSamples);
+
+    analyzer_.process(voice, numSamples, [this](const AnalysisFrame& frame) {
+        if (!analysisFrames_.push(frame))
+            droppedFrames_.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    const float* silence = scratch_.getReadPointer(silenceChannel);
+    const auto record = [&] {
+        if (!sessionActive_)
+            return;
+        const float* left = numOutputs > 0 && outputs[0] != nullptr ? outputs[0] + offset : silence;
+        const float* right = numOutputs > 1 && outputs[1] != nullptr ? outputs[1] + offset : left;
+        recorder_.writeAudio(voice != nullptr ? voice : silence, left, right, numSamples);
+    };
+
+    // While the latency probe runs, it owns the outputs, and always listens to the real mic.
+    float* probeSignal = scratch_.getWritePointer(probeChannel);
     if (probe_.process(mic, probeSignal, numSamples))
     {
         for (int ch = 0; ch < numOutputs; ++ch)
             if (outputs[ch] != nullptr)
                 juce::FloatVectorOperations::copy(outputs[ch] + offset, probeSignal, numSamples);
+        record();
         return;
     }
 
     // Voice pass-through, ramped so that switching it on or off does not click.
     const float targetGain = monitorEnabled_.load(std::memory_order_relaxed) ? monitorGain_.load(std::memory_order_relaxed) : 0.0f;
-    if (mic != nullptr && (targetGain > 0.0f || currentMonitorGain_ > 0.0f))
+    if (voice != nullptr && (targetGain > 0.0f || currentMonitorGain_ > 0.0f))
     {
         const float step = (targetGain - currentMonitorGain_) / static_cast<float>(numSamples);
         for (int ch = 0; ch < numOutputs; ++ch)
@@ -135,7 +271,7 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
             for (int i = 0; i < numSamples; ++i)
             {
                 gain += step;
-                out[i] += mic[i] * gain;
+                out[i] += voice[i] * gain;
             }
         }
     }
@@ -145,7 +281,6 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
     float* left = instrumentBuffer_.getWritePointer(0);
     float* right = instrumentBuffer_.getWritePointer(1);
     instrument_.render(left, right, numSamples);
-
     if (numOutputs >= 2)
     {
         if (outputs[0] != nullptr)
@@ -158,20 +293,22 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
         juce::FloatVectorOperations::addWithMultiply(outputs[0] + offset, left, 0.5f, numSamples);
         juce::FloatVectorOperations::addWithMultiply(outputs[0] + offset, right, 0.5f, numSamples);
     }
-}
 
-void AudioEngine::applyNoteEvents() noexcept
-{
-    NoteEvent event;
-    while (noteEvents_.pop(event))
+    // Click track, heard in the headphones only (it is not in input.wav).
+    if (clickTrack_.isRunning())
     {
-        switch (event.type)
-        {
-            case NoteEvent::Type::on:     instrument_.noteOn(0, event.note, event.velocity); break;
-            case NoteEvent::Type::off:    instrument_.noteOff(0, event.note); break;
-            case NoteEvent::Type::allOff: instrument_.allNotesOff(); break;
-        }
+        float* click = scratch_.getWritePointer(clickChannel);
+        juce::FloatVectorOperations::clear(click, numSamples);
+        clickTrack_.process(click, numSamples, chunkStart, [this](const ClickEvent& event) {
+            if (!clickEvents_.push(event))
+                droppedClicks_.fetch_add(1, std::memory_order_relaxed);
+        });
+        for (int ch = 0; ch < numOutputs; ++ch)
+            if (outputs[ch] != nullptr)
+                juce::FloatVectorOperations::add(outputs[ch] + offset, click, numSamples);
     }
+
+    record();
 }
 
 void AudioEngine::raisePeak(std::atomic<float>& peak, const float* samples, int numSamples) noexcept

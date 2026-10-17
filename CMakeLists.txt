@@ -24,8 +24,14 @@ endif()
 
 add_library(liveband_core STATIC
     src/common/RtAllocGuard.cpp
+    src/audio/Decimator.cpp
+    src/audio/Fft.cpp
     src/audio/LatencyAnalysis.cpp
-    src/audio/LatencyProbe.cpp)
+    src/audio/LatencyProbe.cpp
+    src/audio/OnsetDetector.cpp
+    src/audio/VocalAnalyzer.cpp
+    src/audio/YinPitch.cpp
+    src/music/ClickTrack.cpp)
 target_include_directories(liveband_core PUBLIC src)
 target_compile_features(liveband_core PUBLIC cxx_std_20)
 target_link_libraries(liveband_core PRIVATE liveband_warnings)
@@ -46,6 +52,10 @@ if(LB_BUILD_TESTS)
         tests/CallbackStatsTests.cpp
         tests/RtAllocGuardTests.cpp
         tests/LatencyTests.cpp
+        tests/DspBasicsTests.cpp
+        tests/YinPitchTests.cpp
+        tests/VocalAnalyzerTests.cpp
+        tests/ClickTrackTests.cpp
         src/common/RtAllocGuardNew.cpp)
     target_link_libraries(liveband_tests PRIVATE liveband_core Catch2::Catch2WithMain liveband_warnings)
 
@@ -91,7 +101,11 @@ if(LB_BUILD_APP)
         src/MainComponent.cpp
         src/engine/AudioDeviceSetup.cpp
         src/engine/AudioEngine.cpp
+        src/engine/AudioFileLoader.cpp
+        src/engine/SessionRecorder.cpp
         src/engine/SfizzInstrument.cpp
+        src/ui/NoteDisplay.cpp
+        src/ui/PitchView.cpp
         # The allocation guard replaces global operator new, so it is only built into Debug.
         $<$<CONFIG:Debug>:${CMAKE_CURRENT_SOURCE_DIR}/src/common/RtAllocGuardNew.cpp>)
 
@@ -122,6 +136,16 @@ if(LB_BUILD_APP)
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/sfz/test"
                 "$<TARGET_FILE_DIR:LiveBand>/assets/sfz/test")
 
+    # lb-analyze: runs the analyzer over audio files for offline evaluation (tools/python).
+    juce_add_console_app(lb-analyze PRODUCT_NAME "lb-analyze")
+    target_sources(lb-analyze PRIVATE tools/lb-analyze/Main.cpp)
+    target_compile_definitions(lb-analyze PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(lb-analyze PRIVATE
+        liveband_core
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
     # Engine tests: drive AudioEngine and SfizzInstrument with a fake audio device.
     if(LB_BUILD_TESTS)
         juce_add_console_app(liveband_engine_tests PRODUCT_NAME "liveband_engine_tests")
@@ -129,6 +153,8 @@ if(LB_BUILD_APP)
             tests/engine/AudioEngineTests.cpp
             tests/engine/SfizzInstrumentTests.cpp
             src/engine/AudioEngine.cpp
+            src/engine/AudioFileLoader.cpp
+            src/engine/SessionRecorder.cpp
             src/engine/SfizzInstrument.cpp
             src/common/RtAllocGuardNew.cpp)
         target_compile_definitions(liveband_engine_tests PRIVATE
@@ -139,6 +165,7 @@ if(LB_BUILD_APP)
             liveband_core
             sfizz::sfizz
             juce::juce_audio_devices
+            juce::juce_audio_formats
             Catch2::Catch2WithMain
             juce::juce_recommended_config_flags)
         catch_discover_tests(liveband_engine_tests)

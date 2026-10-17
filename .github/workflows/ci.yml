@@ -59,3 +59,59 @@ jobs:
 
       - name: Test
         run: ctest --preset linux-debug
+
+  evaluation:
+    name: Pitch and onset accuracy on real singing (vocadito)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libx11-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxcomposite-dev libxext-dev libxi-dev \
+            libfreetype-dev libfontconfig1-dev libgl1-mesa-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the evaluation tools
+        run: pip install -r tools/python/requirements.txt
+
+      - name: Cache the vocadito dataset
+        uses: actions/cache@v4
+        with:
+          path: testdata/external/vocadito
+          key: vocadito-zenodo-5578807
+
+      - name: Fetch the vocadito dataset
+        run: python tools/python/fetch_vocadito.py
+
+      - name: Build lb-analyze
+        run: |
+          cmake --preset linux-release -DLB_BUILD_TESTS=OFF
+          cmake --build --preset linux-release --target lb-analyze
+
+      - name: Pitch accuracy (fails below the Phase 1 target)
+        run: >
+          python tools/python/eval_pitch.py --check --json pitch.json
+          --analyzer out/build/linux-release/lb-analyze_artefacts/Release/lb-analyze
+          --vocadito testdata/external/vocadito
+
+      - name: Onset accuracy (fails below the Phase 1 target)
+        run: >
+          python tools/python/eval_onsets.py --check --json onsets.json
+          --analyzer out/build/linux-release/lb-analyze_artefacts/Release/lb-analyze
+          --vocadito testdata/external/vocadito
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation
+          path: "*.json"

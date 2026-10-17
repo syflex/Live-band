@@ -45,6 +45,17 @@ Checked against each project's licence file in the pinned checkout.
 | Component | Version | Licence |
 |-----------|---------|---------|
 | [Catch2](https://github.com/catchorg/Catch2) | v3.15.3 (downloaded by CMake) | BSL-1.0 |
+| numpy, scipy | from `tools/python/requirements.txt` | BSD-3-Clause |
+| [librosa](https://librosa.org) | from `tools/python/requirements.txt` | ISC |
+| [mir_eval](https://github.com/mir-evaluation/mir_eval) | from `tools/python/requirements.txt` | MIT |
+| soundfile | from `tools/python/requirements.txt` | BSD-3-Clause |
+| [matplotlib](https://matplotlib.org) | from `tools/python/requirements.txt` | Matplotlib licence (PSF-style, BSD-compatible) |
+
+## Evaluation data (downloaded, not committed)
+
+| Dataset | Licence | Use |
+|---|---|---|
+| [vocadito](https://doi.org/10.5281/zenodo.5578807) (Bittner, Pasalo, Bosch, Meseguer Brocal and Rubinstein, 2021) | CC BY 4.0 | Scoring pitch and onset detection. Fetched by `tools/python/fetch_vocadito.py` into `testdata/external/`. |
 
 ## Sound assets
 

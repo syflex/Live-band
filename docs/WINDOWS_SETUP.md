@@ -1,7 +1,8 @@
-# Windows setup and Phase 0 test
+# Windows setup and first tests
 
 This guide gets LiveBand running on the Lenovo laptop with the Jedel headset,
-and walks through the Phase 0 measurements.
+walks through the Phase 0 measurements, and shows the Phase 1 features: the
+live note display, voice files and recording.
 
 ## 1. Get the app
 
@@ -97,7 +98,23 @@ detection, and other apps can block exclusive mode. Do this once:
    Watch **Overruns** and **Driver-reported dropouts**; both should stay at 0.
 8. Click **Copy report** and paste the text into the chat or a GitHub issue.
 
-## 5. What to send back
+## 5. Try the live note display (Phase 1)
+
+![The note display and pitch graph](images/phase1/app-live-pitch.png)
+
+1. Put the headset on and sing a few long notes. The big note name shows what you
+   are singing, the needle shows how sharp or flat you are, and the moving graph
+   shows your pitch over the last 6 seconds.
+2. Lines on the graph mark where the app thinks each new note started: orange when
+   it heard a burst of sound, lilac when it heard the pitch change.
+3. **Voice file**: click **Load voice file…** (or drop a WAV file on the window) and
+   the app listens to that file, in a loop, instead of the mic. Click **Microphone**
+   to go back.
+4. **Recording**: press **Record**, sing, then press **Stop**. **Show recordings** opens
+   the folder. [RECORDING_GUIDE.md](RECORDING_GUIDE.md) explains how to record the
+   test songs.
+
+## 6. What to send back
 
 - The copied report, taken at the smallest buffer that works without crackles.
 - Whether you heard crackles, or an echo of your own voice with **Hear my

@@ -194,6 +194,7 @@ src/
             Pattern.h  PatternPlayer.*  Arranger.*                    ┘  unit-tested)
   engine/   AudioEngine.*  SfizzInstrument.*  Mixer.*  GrooveLoader.* (JUCE / sfizz)
             Controls.*  SessionRecorder.*  LatencyTester.*  FileInput.*
+  ui/       NoteDisplay.*  PitchView.*  (JUCE components)
   Main.cpp
   MainComponent.*                 UI: note, key, tempo, CPU display
 tests/                            Catch2 v3 (BSL-1.0) unit tests for the core
@@ -245,16 +246,24 @@ Steps:
 Voicing requires periodicity above a threshold **and** RMS above a noise gate
 that is calibrated at startup. Voicing uses hysteresis.
 
-Post-processing: a 5-frame median on MIDI pitch, and an octave-jump check
-against the previous stable pitch. The UI shows the note name, a ±50 cent
-meter and the confidence.
+Post-processing: a frame more than a semitone from the median of the last 5
+frames is replaced by that median; other frames keep their own value (a plain
+median lagged behind vibrato). The UI shows the note name, a ±50 cent meter
+and the confidence.
+
+Implemented additions (Phase 1): parabolic interpolation uses the raw
+difference function, and a **sub-octave check** picks twice the period when its
+interpolated CMND dip is less than 0.3 times the chosen one (and the chosen dip
+is above 0.05). This catches octave-too-high answers when the second harmonic
+dominates.
 
 ### 4.3 `OnsetDetector`
 - Runs a 512-point Hann STFT with a 128-sample hop on the same frames as YIN,
   so each hop produces one `AnalysisFrame`.
 - **Onset detection function (ODF):** log-compressed, half-wave-rectified
   spectral flux, with a SuperFlux-style maximum filter across frequency so
-  that vibrato does not fire false onsets. Add a **pitch-novelty** term: a
+  that vibrato does not fire false onsets. The filter is a semitone wide at
+  every frequency, because vibrato moves high harmonics across many FFT bins. Add a **pitch-novelty** term: a
   jump of more than 0.7 semitones between stable YIN segments, or voicing
   switching on. Soft vocal onsets often show up in pitch rather than energy.
 - **Peak picking:** an adaptive threshold of the median of the last 300 ms
@@ -498,35 +507,41 @@ one developer.
     10 minutes.
   - The sfizz test note plays through the headset.
 
-### Phase 1: Listen (week 1)
-- [ ] Core library skeleton, Catch2, `SpscQueue`, `Timeline`.
-- [ ] `Decimator` and `YinPitch`, with unit tests on synthetic sines, sawtooth
-      waves and pulse trains at 65–1000 Hz, with and without noise. Add the
-      live note display.
-- [ ] `OnsetDetector`, plus a scrolling ODF view in the UI for tuning.
-- [ ] File-input mode and the session recorder.
-- [ ] `lb-analyze`, and `eval_pitch.py`, which compares against
-      `librosa.pyin`.
-- [ ] **Record the test set**, in parallel with the work above:
+### Phase 1: Listen (week 1) — done
+Results: [docs/results/PHASE1_RESULTS.md](results/PHASE1_RESULTS.md).
+
+- [x] Core library: Catch2, `SpscQueue`, and the engine's 64-bit sample counter as
+      the timeline (a separate `Timeline` type was not needed yet).
+- [x] `Decimator` and `YinPitch`, with unit tests on synthetic sines, harmonic
+      tones and pulse trains from C2 to C6, with and without noise. Live note
+      display.
+- [x] `OnsetDetector`, plus a scrolling pitch and ODF view in the UI.
+- [x] File-input mode (load or drop a WAV) and the session recorder.
+- [x] `lb-analyze`, `eval_pitch.py` (against reference pitch tracks or pYIN) and
+      `eval_onsets.py`. A CI job runs both on every push.
+- [x] **Evaluated on real singing before our own recordings exist**, using the
+      public vocadito dataset (40 clips with hand-corrected pitch and note
+      annotations). This led to three changes: outlier-only pitch smoothing, a
+      sub-octave check in YIN, and a frequency-proportional max filter in the
+      onset detector.
+- [x] **The app records the test set itself:** Record/Stop with a click in the
+      headphones (4/4 or 6/8, steady or ±5% over 16 bars), saving `input.wav`,
+      the live analysis and the click times. This replaces recording against a
+      separately generated click.
+- [ ] **Record the test set** (owner, with singers): see
+      [RECORDING_GUIDE.md](RECORDING_GUIDE.md).
   - 15–20 clips of 30–60 s, from 4 or more Nigerian singers of mixed voice
     types, singing Nigerian songs: Afrobeats and pop, worship and praise.
   - At least 10 different keys, both major and minor, at 60–140 BPM, with
     some 6/8 worship songs.
-  - Every clip recorded with a click in the singer's headphones, and the
-    click's start sample saved. About 5 clips use a ±5% tempo ramp, and
-    about 3 are sung freely or rubato.
-  - A dry dynamic mic, recorded as 48 kHz 24-bit WAV.
-  - `manifest.csv` lists the file, singer, key, mode, BPM or ramp, click
-    file and notes for each clip.
-  - Get written consent from each singer.
-- **Exit:**
-  - Pitch error below 10 cents on the synthetic signals.
-  - On voiced frames of the test clips, at least 95% within 50 cents of pyin,
-    with fewer than 2% octave errors.
-  - Analysis costs less than 5% of the callback's time budget.
-  - Onset F-measure of at least 0.65 on a hand-annotated subset, using
-    `mir_eval.onset` with a 50 ms window. Vocal onsets are hard, so be
-    realistic about this number.
+  - About 5 clips with a ±5% tempo change, and about 3 sung freely.
+  - Written consent from each singer.
+- **Exit:** met on vocadito; to be repeated on the Nigerian test set.
+  - Pitch error below 10 cents on the synthetic signals: **met**.
+  - At least 95% of voiced frames within 50 cents, fewer than 2% octave errors:
+    **97.4% and 0.9%** on vocadito.
+  - Analysis below 5% of the callback's time budget: **about 128× real time**.
+  - Onset F-measure of at least 0.65 with a 50 ms window: **0.757** on vocadito.
 
 ### Phase 2: Play (week 2)
 - [ ] `SfizzInstrument` with the drum kit. Play a test note from the
