@@ -4,14 +4,22 @@ An offline Windows app that listens to a live singer and plays drums,
 percussion, bass and keys that follow the singer's key and tempo. Built for the
 Nigerian market: Afrobeats and worship styles first.
 
-**Status: Phase 0** (setup and latency proof). The app passes the voice
-through, plays a test instrument through sfizz, measures round-trip latency
-and shows live audio diagnostics. No band yet.
+**Status: Phase 1 done** (listening). The app hears the singer: it shows the
+note being sung and a scrolling pitch graph, finds where notes start, can listen
+to a voice file instead of the mic, and records test sessions with a click
+track. It also passes the voice through, plays a test instrument through sfizz,
+measures round-trip latency and shows live diagnostics. No band yet: that is
+Phase 2.
+
+On 40 clips of real singing (the vocadito dataset), 97% of pitch frames are within
+50 cents of the truth and the onset F-measure is 0.76. See the
+[Phase 1 results](docs/results/PHASE1_RESULTS.md).
 
 - [Project brief](docs/SPEC.md)
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md), with decisions in
   section 0
-- [Windows setup and Phase 0 test](docs/WINDOWS_SETUP.md)
+- [Windows setup and first tests](docs/WINDOWS_SETUP.md)
+- [Recording the test set](docs/RECORDING_GUIDE.md)
 
 ## Building
 
@@ -48,17 +56,36 @@ cmake --preset linux-core && cmake --build --preset linux-core && ctest --preset
 ```
 
 The full app also needs JUCE's Linux dependencies (see
-`.github/workflows/ci.yml`), then uses the `linux-debug` preset.
+`.github/workflows/ci.yml`), then uses the `linux-debug` or `linux-release`
+preset.
+
+### Offline evaluation
+
+`lb-analyze` runs the app's voice analysis over audio files and writes CSVs.
+The scripts in `tools/python` score it against reference pitch tracks and note
+annotations:
+
+```
+python -m venv .venv && .venv/bin/pip install -r tools/python/requirements.txt
+.venv/bin/python tools/python/fetch_vocadito.py
+.venv/bin/python tools/python/eval_pitch.py  --analyzer <path to lb-analyze> --vocadito testdata/external/vocadito
+.venv/bin/python tools/python/eval_onsets.py --analyzer <path to lb-analyze> --vocadito testdata/external/vocadito
+```
+
+CI runs the same evaluation on every push and fails if accuracy drops below the
+Phase 1 targets.
 
 ## Layout
 
 ```
-src/common   lock-free queue, callback timing, real-time allocation guard    ┐ core library:
-src/audio    DSP: latency measurement now; pitch and onsets in Phase 1       │ no JUCE, unit-tested
-src/music    key, tempo and arranger (from Phase 2)                          ┘
-src/engine   audio engine, device setup, sfizz instrument (JUCE)
+src/common   lock-free queue, callback timing, allocation guard, pitch helpers ┐ core library:
+src/audio    YIN pitch, onsets, vocal analyzer, decimator, FFT, latency       │ no JUCE, unit-tested
+src/music    click track now; key, tempo and arranger from Phase 2            ┘
+src/engine   audio engine, device setup, session recorder, sfizz instrument (JUCE)
+src/ui       note display and pitch view
 src/Main.cpp, src/MainComponent.*   the app window
 tests/       Catch2 tests; tests/engine drives the audio engine with a fake device
+tools/       lb-analyze (offline analysis) and Python evaluation scripts
 assets/      sound kits (downloaded) and grooves
 libs/        JUCE and sfizz submodules
 ```
