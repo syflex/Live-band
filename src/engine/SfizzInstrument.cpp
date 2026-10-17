@@ -50,6 +50,11 @@ void SfizzInstrument::render(float* left, float* right, int numSamples) noexcept
     synth_->renderBlock(channels, static_cast<size_t>(numSamples), 1);
 }
 
+void SfizzInstrument::enableFreeWheeling() noexcept
+{
+    synth_->enableFreeWheeling();
+}
+
 int SfizzInstrument::activeVoices() const noexcept
 {
     return synth_->getNumActiveVoices();

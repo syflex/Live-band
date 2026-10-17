@@ -28,6 +28,7 @@ add_library(liveband_core STATIC
     src/audio/Fft.cpp
     src/audio/LatencyAnalysis.cpp
     src/audio/LatencyProbe.cpp
+    src/audio/Limiter.cpp
     src/audio/OnsetDetector.cpp
     src/audio/VocalAnalyzer.cpp
     src/audio/YinPitch.cpp
@@ -96,6 +97,16 @@ if(LB_BUILD_APP)
 
     add_subdirectory(libs/JUCE)
 
+    # Engine sources use JUCE modules, which compile into each target that links them, so
+    # every target below lists these sources itself rather than sharing a library.
+    set(LB_ENGINE_SOURCES
+        src/engine/AudioEngine.cpp
+        src/engine/AudioFileLoader.cpp
+        src/engine/BandController.cpp
+        src/engine/GrooveLoader.cpp
+        src/engine/SessionRecorder.cpp
+        src/engine/SfizzInstrument.cpp)
+
     juce_add_gui_app(LiveBand
         PRODUCT_NAME      "LiveBand"
         COMPANY_NAME      "LiveBand"
@@ -106,10 +117,7 @@ if(LB_BUILD_APP)
         src/Main.cpp
         src/MainComponent.cpp
         src/engine/AudioDeviceSetup.cpp
-        src/engine/AudioEngine.cpp
-        src/engine/AudioFileLoader.cpp
-        src/engine/SessionRecorder.cpp
-        src/engine/SfizzInstrument.cpp
+        ${LB_ENGINE_SOURCES}
         src/ui/NoteDisplay.cpp
         src/ui/PitchView.cpp
         # The allocation guard replaces global operator new, so it is only built into Debug.
@@ -136,11 +144,18 @@ if(LB_BUILD_APP)
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 
-    # Put the test instrument next to the executable, so a copied or downloaded build still finds it.
+    # Put the instruments and grooves next to the executable, so a copied or downloaded build
+    # still finds them. The kit's VCSL samples come along if tools/python/fetch_assets.py has run.
     add_custom_command(TARGET LiveBand POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_directory
                 "${CMAKE_CURRENT_SOURCE_DIR}/assets/sfz/test"
-                "$<TARGET_FILE_DIR:LiveBand>/assets/sfz/test")
+                "$<TARGET_FILE_DIR:LiveBand>/assets/sfz/test"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/sfz/afro-kit"
+                "$<TARGET_FILE_DIR:LiveBand>/assets/sfz/afro-kit"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets/grooves"
+                "$<TARGET_FILE_DIR:LiveBand>/assets/grooves")
 
     # lb-analyze: runs the analyzer over audio files for offline evaluation (tools/python).
     juce_add_console_app(lb-analyze PRODUCT_NAME "lb-analyze")
@@ -152,16 +167,28 @@ if(LB_BUILD_APP)
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 
+    # lb-render: plays a style through the drum kit into a WAV file, for listening and checks.
+    juce_add_console_app(lb-render PRODUCT_NAME "lb-render")
+    target_sources(lb-render PRIVATE
+        tools/lb-render/Main.cpp
+        src/engine/GrooveLoader.cpp
+        src/engine/SfizzInstrument.cpp)
+    target_compile_definitions(lb-render PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(lb-render PRIVATE
+        liveband_core
+        sfizz::sfizz
+        juce::juce_audio_formats
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+
     # Engine tests: drive AudioEngine and SfizzInstrument with a fake audio device.
     if(LB_BUILD_TESTS)
         juce_add_console_app(liveband_engine_tests PRODUCT_NAME "liveband_engine_tests")
         target_sources(liveband_engine_tests PRIVATE
             tests/engine/AudioEngineTests.cpp
+            tests/engine/BandTests.cpp
             tests/engine/SfizzInstrumentTests.cpp
-            src/engine/AudioEngine.cpp
-            src/engine/AudioFileLoader.cpp
-            src/engine/SessionRecorder.cpp
-            src/engine/SfizzInstrument.cpp
+            ${LB_ENGINE_SOURCES}
             src/common/RtAllocGuardNew.cpp)
         target_compile_definitions(liveband_engine_tests PRIVATE
             JUCE_WEB_BROWSER=0

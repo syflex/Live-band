@@ -1,0 +1,162 @@
+#include "engine/BandController.h"
+
+#include <cmath>
+#include <utility>
+
+namespace lb
+{
+namespace
+{
+constexpr double startLeadSeconds = 0.1; // time for the command to reach the audio thread
+constexpr double tapRunTimeoutSeconds = 2.0;
+} // namespace
+
+double BandController::samplesPerBeat(double bpm) const
+{
+    return 60.0 * engine_.deviceInfo().sampleRate / bpm;
+}
+
+void BandController::styleChanged()
+{
+    if (const auto* style = engine_.style())
+        bpm_ = style->defaultBpm;
+    taps_.reset();
+}
+
+BandController::TapResult BandController::tap(double seconds)
+{
+    const auto* style = engine_.style();
+    if (style == nullptr || engine_.deviceInfo().sampleRate <= 0.0)
+        return TapResult::ignored;
+
+    taps_.tap(seconds);
+    const auto estimate = taps_.estimate();
+    if (estimate.taps < tapsToStart)
+        return TapResult::counting;
+
+    const double bpm = style->foldTempo(estimate.bpm());
+    const double spb = samplesPerBeat(bpm);
+    const auto status = engine_.bandStatus();
+    const int latency = engine_.outputLatencySamples();
+
+    if (status.state == BandState::stopped)
+    {
+        double downbeat = 0.0;
+        if (!engine_.sampleAtTime(estimate.timeOfTap(estimate.taps), downbeat))
+            return TapResult::ignored;
+        bpm_ = bpm;
+        engine_.startBand(std::llround(downbeat) - latency, spb, status.section, 0);
+        return TapResult::started;
+    }
+    if (status.state == BandState::playing)
+    {
+        double anchor = 0.0;
+        if (!engine_.sampleAtTime(estimate.timeOfTap(estimate.taps - 1), anchor))
+            return TapResult::ignored;
+        bpm_ = bpm;
+        engine_.steerBand(std::llround(anchor) - latency, spb);
+        return TapResult::steered;
+    }
+    return TapResult::ignored;
+}
+
+void BandController::startStop()
+{
+    const auto status = engine_.bandStatus();
+    if (status.state == BandState::playing || status.state == BandState::waiting)
+    {
+        engine_.stopBand();
+        return;
+    }
+    if (status.state == BandState::ending || engine_.style() == nullptr)
+        return;
+
+    double now = 0.0;
+    if (!engine_.sampleAtTime(engine_.now(), now))
+        return;
+    const double spb = samplesPerBeat(bpm_);
+    const double rate = engine_.deviceInfo().sampleRate;
+    const double downbeat = now + startLeadSeconds * rate + engine_.style()->beatsPerBar * spb;
+    taps_.reset();
+    engine_.startBand(std::llround(downbeat), spb, status.section, 1);
+}
+
+void BandController::stopNow()
+{
+    taps_.reset();
+    engine_.stopBandNow();
+}
+
+void BandController::next()
+{
+    engine_.nextSection();
+}
+
+void BandController::fill()
+{
+    engine_.fill();
+}
+
+void BandController::selectSection(int section)
+{
+    engine_.selectSection(section);
+}
+
+void BandController::setTempoBpm(double bpm)
+{
+    if (!(bpm > 0.0) || engine_.deviceInfo().sampleRate <= 0.0)
+        return;
+    bpm_ = bpm;
+    engine_.setBandTempo(samplesPerBeat(bpm));
+}
+
+int BandController::tapCount() const
+{
+    const auto estimate = taps_.estimate();
+    if (estimate.taps == 0 || engine_.now() - estimate.lastTap > tapRunTimeoutSeconds)
+        return 0;
+    return estimate.taps;
+}
+
+bool BandController::handleMidi(const juce::MidiMessage& message)
+{
+    if (message.isNoteOn())
+    {
+        tap(message.getTimeStamp());
+        return true;
+    }
+    if (!message.isController())
+        return false;
+
+    const bool down = message.getControllerValue() >= 64;
+    switch (message.getControllerNumber())
+    {
+        case 64: // sustain pedal: a tap when it goes down
+        {
+            const bool wasDown = std::exchange(pedalDown_, down);
+            if (down && !wasDown)
+                tap(message.getTimeStamp());
+            return true;
+        }
+        case 80:
+            if (down)
+                tap(message.getTimeStamp());
+            return true;
+        case 81:
+            if (down)
+                startStop();
+            return true;
+        case 82:
+            if (down)
+                next();
+            return true;
+        case 83:
+            if (down)
+                fill();
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace lb

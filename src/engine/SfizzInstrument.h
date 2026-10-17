@@ -32,6 +32,9 @@ public:
 
     int activeVoices() const noexcept;
 
+    // Offline rendering: sfizz may then block to load sample data instead of skipping it.
+    void enableFreeWheeling() noexcept;
+
 private:
     std::unique_ptr<sfz::Sfizz> synth_;
     bool loaded_ = false;

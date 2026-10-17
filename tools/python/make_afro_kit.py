@@ -72,7 +72,8 @@ class Piece:
     choked_by: int = 0  # the group that silences it
 
 
-# Levels set the mix inside the kit: kick and snare lead, the timekeepers sit lower.
+# Levels set the mix inside the kit: kick and snare lead, the hi-hat sits about 15 dB under
+# the kick, and the shaker and congas carry the Afrobeats bounce just behind the drums.
 KIT = [
     Piece(36, "Kick", "kick", 0, -9.0, veltrack=60),
     Piece(37, "Side stick", "snare", 64, -16.0, veltrack=70),
@@ -90,21 +91,21 @@ KIT = [
     Piece(49, "Crash cymbal", "cymbal", 68, -17.0, polyphony=2),
     Piece(51, "Ride cymbal", "cymbal", 70, -21.0, polyphony=3),
     Piece(53, "Ride bell", "cymbal", 69, -20.0, polyphony=2),
-    Piece(54, "Tambourine", "tambourine", 60, -21.0),
-    Piece(56, "Cowbell", "cowbell", 60, -20.0),
-    Piece(60, "High bongo", "bongos", 60, -17.0),
-    Piece(61, "Low bongo", "bongos", 63, -17.0),
-    Piece(62, "Muted high conga", "conga", 62, -17.0),
-    Piece(63, "Open high conga", "conga", 63, -16.0),
-    Piece(64, "Low conga", "conga", 61, -16.0),
-    Piece(67, "High agogo", "agogo", 60, -20.0),
-    Piece(68, "Low agogo", "agogo", 61, -20.0),
-    Piece(69, "Cabasa", "cabasa", 60, -23.0),
-    Piece(70, "Shaker, down stroke", "shaker", 64, -23.0, veltrack=80),
+    Piece(54, "Tambourine", "tambourine", 60, -19.0),
+    Piece(56, "Cowbell", "cowbell", 60, -18.0),
+    Piece(60, "High bongo", "bongos", 60, -15.0),
+    Piece(61, "Low bongo", "bongos", 63, -15.0),
+    Piece(62, "Muted high conga", "conga", 62, -14.0),
+    Piece(63, "Open high conga", "conga", 63, -13.0),
+    Piece(64, "Low conga", "conga", 61, -13.0),
+    Piece(67, "High agogo", "agogo", 60, -18.0),
+    Piece(68, "Low agogo", "agogo", 61, -18.0),
+    Piece(69, "Cabasa", "cabasa", 60, -20.0),
+    Piece(70, "Shaker, down stroke", "shaker", 64, -18.0, veltrack=80),
     Piece(75, "Claves", "claves", 60, -19.0),
     Piece(76, "High woodblock", "woodblock", 60, -19.0),
     Piece(77, "Low woodblock", "woodblock", 62, -19.0),
-    Piece(82, "Shaker, up stroke", "shaker", 65, -23.0, veltrack=80),
+    Piece(82, "Shaker, up stroke", "shaker", 65, -18.0, veltrack=80),
 ]
 
 

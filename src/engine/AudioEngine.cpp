@@ -19,11 +19,112 @@ enum ScratchChannel
 };
 } // namespace
 
+double AudioEngine::systemClock() noexcept
+{
+    return juce::Time::getMillisecondCounterHiRes() * 0.001;
+}
+
 bool AudioEngine::loadInstrument(const juce::File& sfzFile)
 {
     const bool ok = instrument_.load(sfzFile.getFullPathName().toStdString());
     instrumentName_ = ok ? sfzFile.getFileName() : juce::String();
     return ok;
+}
+
+bool AudioEngine::loadDrumKit(const juce::File& sfzFile)
+{
+    const bool ok = drumKit_.load(sfzFile.getFullPathName().toStdString());
+    drumKitName_ = ok ? sfzFile.getFileNameWithoutExtension() : juce::String();
+    return ok;
+}
+
+void AudioEngine::setStyle(std::unique_ptr<Style> style)
+{
+    style_ = style.get();
+    if (style != nullptr)
+        styles_.push_back(std::move(style));
+    Command command;
+    command.type = Command::Type::setStyle;
+    command.style = style_;
+    pushCommand(command);
+}
+
+void AudioEngine::startBand(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars) noexcept
+{
+    Command command;
+    command.type = Command::Type::startBand;
+    command.sample = downbeatSample;
+    command.samplesPerBeat = samplesPerBeat;
+    command.section = section;
+    command.countInBars = countInBars;
+    pushCommand(command);
+}
+
+void AudioEngine::pushBandCommand(Command::Type type) noexcept
+{
+    Command command;
+    command.type = type;
+    pushCommand(command);
+}
+
+void AudioEngine::stopBand() noexcept { pushBandCommand(Command::Type::stopBand); }
+void AudioEngine::stopBandNow() noexcept { pushBandCommand(Command::Type::stopBandNow); }
+void AudioEngine::nextSection() noexcept { pushBandCommand(Command::Type::nextSection); }
+void AudioEngine::fill() noexcept { pushBandCommand(Command::Type::fill); }
+
+void AudioEngine::selectSection(int section) noexcept
+{
+    Command command;
+    command.type = Command::Type::selectSection;
+    command.section = section;
+    pushCommand(command);
+}
+
+void AudioEngine::setBandTempo(double samplesPerBeat) noexcept
+{
+    Command command;
+    command.type = Command::Type::setBandTempo;
+    command.samplesPerBeat = samplesPerBeat;
+    pushCommand(command);
+}
+
+void AudioEngine::steerBand(std::int64_t sample, double samplesPerBeat) noexcept
+{
+    Command command;
+    command.type = Command::Type::steerBand;
+    command.sample = sample;
+    command.samplesPerBeat = samplesPerBeat;
+    pushCommand(command);
+}
+
+void AudioEngine::setLayerEnabled(int layer, bool enabled) noexcept
+{
+    const auto bit = 1u << layer;
+    const auto mask = enabled ? (layerMask_.fetch_or(bit) | bit) : (layerMask_.fetch_and(~bit) & ~bit);
+    Command command;
+    command.type = Command::Type::setLayerMask;
+    command.mask = mask;
+    pushCommand(command);
+}
+
+AudioEngine::BandStatus AudioEngine::bandStatus() const noexcept
+{
+    BandStatus status;
+    status.state = static_cast<BandState>(bandState_.load());
+    status.section = bandSection_.load();
+    status.pendingSection = bandPendingSection_.load();
+    status.fillScheduled = bandFillScheduled_.load();
+    status.samplesPerBeat = bandSamplesPerBeat_.load();
+    const double rate = infoSampleRate_.load();
+    status.bpm = status.samplesPerBeat > 0.0 && rate > 0.0 ? 60.0 * rate / status.samplesPerBeat : 0.0;
+    return status;
+}
+
+int AudioEngine::outputLatencySamples() const noexcept
+{
+    if (const int roundTrip = measuredRoundTrip_.load(); roundTrip > 0)
+        return roundTrip / 2;
+    return infoOutputLatency_.load() + infoBufferSize_.load();
 }
 
 void AudioEngine::setFileInput(std::vector<float> samples, const juce::String& name)
@@ -110,9 +211,16 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     maxBlockSize_ = std::max(device->getCurrentBufferSizeSamples(), 1);
 
     instrumentBuffer_.setSize(2, maxBlockSize_);
+    kitBuffer_.setSize(2, maxBlockSize_);
     scratch_.setSize(numScratchChannels, maxBlockSize_);
     scratch_.clear();
     instrument_.prepare(sampleRate_, maxBlockSize_);
+    drumKit_.prepare(sampleRate_, maxBlockSize_);
+    player_.prepare(sampleRate_); // a restart stops the band
+    player_.setLayerMask(layerMask_.load());
+    limiter_.prepare(sampleRate_);
+    timeMap_.restart();
+    currentDrumsGain_ = drumsGain_.load();
     probe_.prepare(sampleRate_);
     analyzer_.prepare(sampleRate_);
     analyzer_.reset(sampleTime_);
@@ -128,11 +236,13 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     infoBufferSize_.store(device->getCurrentBufferSizeSamples());
     infoInputLatency_.store(device->getInputLatencyInSamples());
     infoOutputLatency_.store(device->getOutputLatencyInSamples());
+    publishBandStatus();
 }
 
 void AudioEngine::audioDeviceStopped()
 {
     instrument_.allNotesOff();
+    drumKit_.allNotesOff();
     infoSampleRate_.store(0.0);
     infoBufferSize_.store(0);
 }
@@ -151,6 +261,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputs, i
 
     if (maxBlockSize_ <= 0 || sampleRate_ <= 0.0)
         return;
+
+    timeMap_.update(sampleTime_, clock_(), sampleRate_);
 
     // The mic is the first active input channel.
     const float* mic = nullptr;
@@ -171,7 +283,8 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputs, i
     if (numOutputs > 0 && outputs[0] != nullptr)
         raisePeak(outputPeak_, outputs[0], numSamples);
 
-    activeVoices_.store(instrument_.activeVoices(), std::memory_order_relaxed);
+    activeVoices_.store(instrument_.activeVoices() + drumKit_.activeVoices(), std::memory_order_relaxed);
+    publishBandStatus();
     sampleTime_ += numSamples;
     publishedSampleTime_.store(sampleTime_, std::memory_order_relaxed);
 
@@ -202,8 +315,49 @@ void AudioEngine::applyCommands() noexcept
                 sessionStart_.store(-1);
                 clickTrack_.stop();
                 break;
+
+            case Command::Type::setStyle:
+                player_.setStyle(command.style);
+                break;
+            case Command::Type::startBand:
+                player_.start(command.sample, command.samplesPerBeat, command.section, command.countInBars);
+                break;
+            case Command::Type::stopBand:      player_.stop(); break;
+            case Command::Type::stopBandNow:   player_.stopNow(); break;
+            case Command::Type::nextSection:   player_.nextSection(); break;
+            case Command::Type::selectSection: player_.selectSection(command.section); break;
+            case Command::Type::fill:          player_.fill(); break;
+            case Command::Type::setBandTempo:  player_.setTempo(command.samplesPerBeat); break;
+            case Command::Type::steerBand:     player_.steerToNearestBeat(command.sample, command.samplesPerBeat); break;
+            case Command::Type::setLayerMask:  player_.setLayerMask(command.mask); break;
         }
     }
+}
+
+void AudioEngine::publishBandStatus() noexcept
+{
+    bandState_.store(static_cast<int>(player_.state()), std::memory_order_relaxed);
+    bandSection_.store(player_.section(), std::memory_order_relaxed);
+    bandPendingSection_.store(player_.pendingSection(), std::memory_order_relaxed);
+    bandFillScheduled_.store(player_.fillScheduled(), std::memory_order_relaxed);
+    bandSamplesPerBeat_.store(player_.style() != nullptr ? player_.samplesPerBeat() : 0.0, std::memory_order_relaxed);
+}
+
+void AudioEngine::renderBand(std::int64_t chunkStart, int numSamples) noexcept
+{
+    player_.process(chunkStart, numSamples,
+        [this](const PlayerNote& note) {
+            if (note.on)
+                drumKit_.noteOn(note.offset, note.note, note.velocity);
+            else
+                drumKit_.noteOff(note.offset, note.note);
+        },
+        [this](const BeatTick& tick) {
+            if (!beatTicks_.push(tick))
+                droppedTicks_.fetch_add(1, std::memory_order_relaxed);
+        });
+    // The kit renders even when the band has stopped, so the last hits ring out.
+    drumKit_.render(kitBuffer_.getWritePointer(0), kitBuffer_.getWritePointer(1), numSamples);
 }
 
 const float* AudioEngine::readFileInput(int numSamples) noexcept
@@ -235,6 +389,9 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
         if (!analysisFrames_.push(frame))
             droppedFrames_.fetch_add(1, std::memory_order_relaxed);
     });
+
+    // The band keeps time even while the latency probe owns the outputs.
+    renderBand(chunkStart, numSamples);
 
     const float* silence = scratch_.getReadPointer(silenceChannel);
     const auto record = [&] {
@@ -277,22 +434,29 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
     }
     currentMonitorGain_ = targetGain;
 
-    // Test instrument.
+    // Instruments: the test instrument, and the drum kit at its (ramped) volume. A mono
+    // output gets the average of the two channels.
+    const auto mixStereo = [&](const float* left, const float* right, float startGain, float endGain) {
+        if (numOutputs >= 2)
+        {
+            addRamped(outputs[0], offset, left, startGain, endGain, numSamples);
+            addRamped(outputs[1], offset, right, startGain, endGain, numSamples);
+        }
+        else if (numOutputs == 1)
+        {
+            addRamped(outputs[0], offset, left, 0.5f * startGain, 0.5f * endGain, numSamples);
+            addRamped(outputs[0], offset, right, 0.5f * startGain, 0.5f * endGain, numSamples);
+        }
+    };
+
     float* left = instrumentBuffer_.getWritePointer(0);
     float* right = instrumentBuffer_.getWritePointer(1);
     instrument_.render(left, right, numSamples);
-    if (numOutputs >= 2)
-    {
-        if (outputs[0] != nullptr)
-            juce::FloatVectorOperations::add(outputs[0] + offset, left, numSamples);
-        if (outputs[1] != nullptr)
-            juce::FloatVectorOperations::add(outputs[1] + offset, right, numSamples);
-    }
-    else if (numOutputs == 1 && outputs[0] != nullptr)
-    {
-        juce::FloatVectorOperations::addWithMultiply(outputs[0] + offset, left, 0.5f, numSamples);
-        juce::FloatVectorOperations::addWithMultiply(outputs[0] + offset, right, 0.5f, numSamples);
-    }
+    mixStereo(left, right, 1.0f, 1.0f);
+
+    const float drumsGain = drumsGain_.load(std::memory_order_relaxed);
+    mixStereo(kitBuffer_.getReadPointer(0), kitBuffer_.getReadPointer(1), currentDrumsGain_, drumsGain);
+    currentDrumsGain_ = drumsGain;
 
     // Click track, heard in the headphones only (it is not in input.wav).
     if (clickTrack_.isRunning())
@@ -308,7 +472,30 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
                 juce::FloatVectorOperations::add(outputs[ch] + offset, click, numSamples);
     }
 
+    // Master limiter: nothing reaches the headphones above -1 dBFS.
+    if (numOutputs > 0 && outputs[0] != nullptr)
+        limiter_.process(outputs[0] + offset, numOutputs > 1 && outputs[1] != nullptr ? outputs[1] + offset : nullptr, numSamples);
+
     record();
+}
+
+void AudioEngine::addRamped(float* out, int offset, const float* in, float startGain, float endGain, int numSamples) noexcept
+{
+    if (out == nullptr)
+        return;
+    out += offset;
+    if (startGain == endGain)
+    {
+        juce::FloatVectorOperations::addWithMultiply(out, in, startGain, numSamples);
+        return;
+    }
+    const float step = (endGain - startGain) / static_cast<float>(numSamples);
+    float gain = startGain;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        gain += step;
+        out[i] += in[i] * gain;
+    }
 }
 
 void AudioEngine::raisePeak(std::atomic<float>& peak, const float* samples, int numSamples) noexcept
