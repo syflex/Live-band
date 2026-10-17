@@ -118,6 +118,7 @@ if(LB_BUILD_APP)
         src/MainComponent.cpp
         src/engine/AudioDeviceSetup.cpp
         ${LB_ENGINE_SOURCES}
+        src/ui/BeatLamps.cpp
         src/ui/NoteDisplay.cpp
         src/ui/PitchView.cpp
         # The allocation guard replaces global operator new, so it is only built into Debug.

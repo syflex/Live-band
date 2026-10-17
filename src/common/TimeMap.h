@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -27,7 +28,7 @@ public:
     void update(std::int64_t sample, double seconds, double sampleRate) noexcept
     {
         const double offset = seconds - static_cast<double>(sample) / sampleRate;
-        if (!hasEstimate_ || sampleRate != rate_)
+        if (!hasEstimate_)
         {
             estimate_ = offset;
             hasEstimate_ = true;
@@ -38,7 +39,6 @@ public:
             estimate_ = std::min(offset, estimate_ + creepPerSecond * elapsed);
         }
         lastSample_ = sample;
-        rate_ = sampleRate;
 
         // Seqlock: odd while writing.
         const auto sequence = sequence_.load(std::memory_order_relaxed);
@@ -50,7 +50,7 @@ public:
         valid_.store(true, std::memory_order_release);
     }
 
-    void restart() noexcept { hasEstimate_ = false; } // audio thread, when the device restarts
+    void restart() noexcept { hasEstimate_ = false; } // audio thread, when the device (and maybe its rate) restarts
 
     // Any thread. Returns false until the first callback.
     bool sampleAt(double seconds, double& sample) const noexcept
@@ -77,7 +77,6 @@ private:
     // Audio thread only.
     bool hasEstimate_ = false;
     double estimate_ = 0.0;
-    double rate_ = 0.0;
     std::int64_t lastSample_ = 0;
 
     std::atomic<std::uint32_t> sequence_ { 0 };

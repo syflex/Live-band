@@ -61,7 +61,9 @@ bool SessionRecorder::open(const juce::File& folder, double sampleRate, juce::St
     analysisCsv_ = std::make_unique<juce::FileOutputStream>(folder.getChildFile("analysis.csv"));
     onsetsCsv_ = std::make_unique<juce::FileOutputStream>(folder.getChildFile("onsets.csv"));
     clicksCsv_ = std::make_unique<juce::FileOutputStream>(folder.getChildFile("clicks.csv"));
-    if (inputWriter_ == nullptr || outputWriter_ == nullptr || !analysisCsv_->openedOk() || !onsetsCsv_->openedOk() || !clicksCsv_->openedOk())
+    beatsCsv_ = std::make_unique<juce::FileOutputStream>(folder.getChildFile("beats.csv"));
+    if (inputWriter_ == nullptr || outputWriter_ == nullptr || !analysisCsv_->openedOk() || !onsetsCsv_->openedOk() || !clicksCsv_->openedOk()
+        || !beatsCsv_->openedOk())
     {
         if (error.isEmpty())
             error = "cannot create files in " + folder.getFullPathName();
@@ -70,14 +72,16 @@ bool SessionRecorder::open(const juce::File& folder, double sampleRate, juce::St
         analysisCsv_.reset();
         onsetsCsv_.reset();
         clicksCsv_.reset();
+        beatsCsv_.reset();
         return false;
     }
 
     writeLine(analysisCsv_.get(), "time_s,f0_hz,midi,periodicity,rms_db,odf,voiced,onset\n");
     writeLine(onsetsCsv_.get(), "time_s,strength,source\n");
     writeLine(clicksCsv_.get(), "time_s,bar,beat,subdivision,bpm\n");
+    writeLine(beatsCsv_.get(), "time_s,bar,beat,section,bpm,count_in,fill,ending,section_start\n");
 
-    framesWritten_ = onsetsWritten_ = clicksWritten_ = 0;
+    framesWritten_ = onsetsWritten_ = clicksWritten_ = beatsWritten_ = 0;
     droppedBlocks_.store(0);
     if (!writerThread_.isThreadRunning())
         writerThread_.startThread();
@@ -149,6 +153,17 @@ void SessionRecorder::writeClick(const ClickEvent& click, std::int64_t sessionSt
     ++clicksWritten_;
 }
 
+void SessionRecorder::writeBeat(const BeatTick& tick, std::int64_t sessionStart)
+{
+    if (!isOpen_ || tick.sampleTime < sessionStart)
+        return;
+    const auto flag = [&](std::uint8_t f) { return (tick.flags & f) != 0 ? 1 : 0; };
+    writeLine(beatsCsv_.get(), "%.5f,%d,%d,%d,%.3f,%d,%d,%d,%d\n", static_cast<double>(tick.sampleTime - sessionStart) / sampleRate_, tick.bar,
+              tick.beat, tick.section, static_cast<double>(tick.bpm), flag(BeatTick::countIn), flag(BeatTick::fill), flag(BeatTick::ending),
+              flag(BeatTick::sectionStart));
+    ++beatsWritten_;
+}
+
 void SessionRecorder::close(juce::DynamicObject::Ptr metadata)
 {
     if (!isOpen_)
@@ -165,6 +180,7 @@ void SessionRecorder::close(juce::DynamicObject::Ptr metadata)
     analysisCsv_.reset();
     onsetsCsv_.reset();
     clicksCsv_.reset();
+    beatsCsv_.reset();
     isOpen_ = false;
 
     if (metadata == nullptr)
@@ -173,11 +189,13 @@ void SessionRecorder::close(juce::DynamicObject::Ptr metadata)
     metadata->setProperty("analysisFrames", static_cast<juce::int64>(framesWritten_));
     metadata->setProperty("onsets", static_cast<juce::int64>(onsetsWritten_));
     metadata->setProperty("clicks", static_cast<juce::int64>(clicksWritten_));
+    metadata->setProperty("bandBeats", static_cast<juce::int64>(beatsWritten_));
     metadata->setProperty("droppedAudioBlocks", static_cast<juce::int64>(droppedBlocks_.load()));
     metadata->setProperty("timesAreRelativeTo", "the first sample of input.wav");
     metadata->setProperty("clickTiming",
                           "clicks.csv gives when each click was sent to the output. The singer heard it about one output latency "
-                          "later, and their voice reached input.wav about one round-trip latency after the click was sent.");
+                          "later, and their voice reached input.wav about one round-trip latency after the click was sent. "
+                          "beats.csv gives the band's beats the same way: when each was sent to the output.");
     folder_.getChildFile("session.json").replaceWithText(juce::JSON::toString(juce::var(metadata.get())));
 }
 

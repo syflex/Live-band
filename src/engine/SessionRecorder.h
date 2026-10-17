@@ -2,6 +2,7 @@
 
 #include "audio/AnalysisFrame.h"
 #include "music/ClickTrack.h"
+#include "music/PatternPlayer.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -18,10 +19,11 @@ namespace lb
 //   analysis.csv  the live analysis frames (same columns as lb-analyze's .frames.csv)
 //   onsets.csv    the live onsets (same columns as lb-analyze's .onsets.csv)
 //   clicks.csv    when each click was sent to the output
+//   beats.csv     when each beat of the band was sent to the output
 //   session.json  settings and summary
 // All times are seconds from the first sample of input.wav.
 //
-// Threads: open(), writeFrame(), writeClick() and close() run on the message thread.
+// Threads: open(), writeFrame(), writeClick(), writeBeat() and close() run on the message thread.
 // writeAudio() runs on the audio thread: it only pushes into a FIFO that a background
 // thread writes to disk, and drops (and counts) audio if the disk falls behind.
 class SessionRecorder
@@ -38,6 +40,7 @@ public:
 
     void writeFrame(const AnalysisFrame& frame, std::int64_t sessionStart);
     void writeClick(const ClickEvent& click, std::int64_t sessionStart);
+    void writeBeat(const BeatTick& tick, std::int64_t sessionStart);
 
     // Finishes the files and writes session.json from `metadata` plus the recorder's own counts.
     void close(juce::DynamicObject::Ptr metadata);
@@ -64,12 +67,14 @@ private:
     std::unique_ptr<juce::FileOutputStream> analysisCsv_;
     std::unique_ptr<juce::FileOutputStream> onsetsCsv_;
     std::unique_ptr<juce::FileOutputStream> clicksCsv_;
+    std::unique_ptr<juce::FileOutputStream> beatsCsv_;
     juce::File folder_;
     double sampleRate_ = 0.0;
     bool isOpen_ = false;
     std::int64_t framesWritten_ = 0;
     std::int64_t onsetsWritten_ = 0;
     std::int64_t clicksWritten_ = 0;
+    std::int64_t beatsWritten_ = 0;
 };
 
 } // namespace lb

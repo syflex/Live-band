@@ -1,21 +1,26 @@
 #pragma once
 
 #include "engine/AudioEngine.h"
+#include "engine/BandController.h"
+#include "ui/BeatLamps.h"
 #include "ui/NoteDisplay.h"
 #include "ui/PitchView.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include <array>
+#include <deque>
+#include <optional>
 #include <vector>
 
-// The app window: audio settings, voice input (mic or a file), the live note and pitch view,
-// session recording with an optional click, the latency test, a test instrument, and live
-// diagnostics.
+// The app window: audio settings, the band (start by tapping, sections, fills, levels, beat
+// lights), voice input (mic or a file), the live note and pitch view, session recording with
+// an optional click, the latency test, a test instrument, and live diagnostics.
 class MainComponent final : public juce::Component,
                             public juce::FileDragAndDropTarget,
                             private juce::Timer,
-                            private juce::ChangeListener
+                            private juce::ChangeListener,
+                            private juce::MidiInputCallback
 {
 public:
     MainComponent();
@@ -42,13 +47,30 @@ private:
         int midiNote;
     };
 
-    // Computer keys a s d f g h j k play C4 to C5 on the test instrument.
-    static constexpr std::array<TestKey, 8> testKeys { { { 'a', 60 }, { 's', 62 }, { 'd', 64 }, { 'f', 65 },
-                                                         { 'g', 67 }, { 'h', 69 }, { 'j', 71 }, { 'k', 72 } } };
+    // Number keys 1 to 8 play C4 to C5 on the test instrument.
+    static constexpr std::array<TestKey, 8> testKeys { { { '1', 60 }, { '2', 62 }, { '3', 64 }, { '4', 65 },
+                                                         { '5', 67 }, { '6', 69 }, { '7', 71 }, { '8', 72 } } };
+
+    // Band keys: acted on when pressed, not again while held.
+    struct BandKey
+    {
+        int keyCode;
+        bool held = false;
+    };
     static constexpr int latencyRunsPerTest = 7;
 
     void timerCallback() override;
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
+    void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
+
+    void setUpBandControls();
+    void loadBand();
+    void updateBand();
+    juce::String bandStatusText(const lb::AudioEngine::BandStatus& status) const;
+    bool pressBandKey(BandKey& key);
+    void enableMidiInputs();
+    void applyLatencyCompensation();
+    static int countMissingSamples(const juce::File& kitFolder);
 
     void drainEngineQueues();
     void showAudioSettings();
@@ -76,6 +98,7 @@ private:
     juce::ApplicationProperties properties_;
     juce::AudioDeviceManager deviceManager_;
     lb::AudioEngine engine_;
+    lb::BandController band_ { engine_ };
     juce::String deviceError_;
 
     // Row 1: device and monitoring.
@@ -84,6 +107,20 @@ private:
     juce::Slider monitorGainSlider_;
     juce::TextButton latencyButton_ { "Measure latency" };
     juce::TextButton loadButton_ { "Load SFZ..." };
+
+    // Band.
+    juce::Label bandLabel_ { {}, "Band:" };
+    juce::TextButton startButton_ { "Start" };
+    juce::TextButton tapButton_ { "Tap" };
+    juce::Slider bandBpmSlider_;
+    juce::ComboBox sectionBox_;
+    juce::TextButton nextButton_ { "Next" };
+    juce::TextButton fillButton_ { "Fill" };
+    juce::ToggleButton drumsToggle_ { "Drums" };
+    juce::ToggleButton percToggle_ { "Perc" };
+    juce::Label bandGainLabel_ { {}, "Band volume" };
+    juce::Slider bandGainSlider_;
+    BeatLamps beatLamps_;
 
     // Row 2: voice input.
     juce::Label voiceLabel_ { {}, "Voice:" };
@@ -132,6 +169,17 @@ private:
     std::vector<double> latencyResultsMs_;
     int latencyFailedRuns_ = 0;
     juce::String latencySummary_;
+
+    // Band state (message thread).
+    juce::String bandProblem_;
+    int missingKitSamples_ = 0;
+    std::deque<lb::BeatTick> pendingTicks_; // sent to the output, not heard yet
+    std::optional<lb::BeatTick> heardTick_;
+    BandKey spaceKey_ { juce::KeyPress::spaceKey };
+    BandKey returnKey_ { juce::KeyPress::returnKey };
+    BandKey nextKey_ { 'n' };
+    BandKey fillKey_ { 'f' };
+    int ticksUntilMidiScan_ = 0;
 
     std::array<bool, testKeys.size()> testKeyDown_ {};
     std::unique_ptr<juce::FileChooser> fileChooser_;

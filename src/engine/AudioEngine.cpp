@@ -484,7 +484,7 @@ void AudioEngine::addRamped(float* out, int offset, const float* in, float start
     if (out == nullptr)
         return;
     out += offset;
-    if (startGain == endGain)
+    if (std::abs(endGain - startGain) < 1.0e-7f)
     {
         juce::FloatVectorOperations::addWithMultiply(out, in, startGain, numSamples);
         return;
