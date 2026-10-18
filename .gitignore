@@ -23,6 +23,10 @@ __pycache__/
 !/assets/sfz/test/
 !/assets/sfz/afro-kit/
 /assets/sfz/afro-kit/vcsl/
+!/assets/sfz/bass/
+!/assets/sfz/pad/
+!/assets/sfz/keys/
+/assets/sfz/keys/vcsl/
 
 # Vocal recordings stay out of this public repository (see docs/IMPLEMENTATION_PLAN.md, section 0).
 /testdata/*

@@ -148,17 +148,11 @@ if(LB_BUILD_APP)
             juce::juce_recommended_warning_flags)
 
     # Put the instruments and grooves next to the executable, so a copied or downloaded build
-    # still finds them. The kit's VCSL samples come along if tools/python/fetch_assets.py has run.
+    # still finds them. Downloaded samples come along if tools/python/fetch_assets.py has run.
     add_custom_command(TARGET LiveBand POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/sfz/test"
-                "$<TARGET_FILE_DIR:LiveBand>/assets/sfz/test"
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/sfz/afro-kit"
-                "$<TARGET_FILE_DIR:LiveBand>/assets/sfz/afro-kit"
-        COMMAND "${CMAKE_COMMAND}" -E copy_directory
-                "${CMAKE_CURRENT_SOURCE_DIR}/assets/grooves"
-                "$<TARGET_FILE_DIR:LiveBand>/assets/grooves")
+                "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+                "$<TARGET_FILE_DIR:LiveBand>/assets")
 
     # lb-analyze: runs the analyzer over audio files for offline evaluation (tools/python).
     juce_add_console_app(lb-analyze PRODUCT_NAME "lb-analyze")

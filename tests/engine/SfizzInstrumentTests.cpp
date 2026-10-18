@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <numbers>
 #include <vector>
 
 namespace
@@ -103,4 +105,57 @@ TEST_CASE("SfizzInstrument reports a missing file")
     lb::SfizzInstrument instrument;
     CHECK_FALSE(instrument.load(LB_ASSETS_DIR "/sfz/test/does-not-exist.sfz"));
     CHECK_FALSE(instrument.isLoaded());
+}
+
+namespace
+{
+// How far, in cents, the strongest frequency near `expected` (within a quarter tone) is from
+// it, in the second half of a rendered one-second note.
+double tuningError(const char* sfzPath, int note, double expected)
+{
+    lb::SfizzInstrument instrument;
+    REQUIRE(instrument.load(sfzPath));
+    instrument.prepare(sampleRate, blockSize);
+    instrument.enableFreeWheeling();
+    instrument.noteOn(0, note, 100);
+    const auto out = renderBlocks(instrument, static_cast<int>(sampleRate) / blockSize);
+
+    double bestCents = 0.0, bestPower = -1.0;
+    for (int cents = -50; cents <= 50; ++cents)
+    {
+        const double f = expected * std::pow(2.0, cents / 1200.0);
+        double re = 0.0, im = 0.0;
+        for (std::size_t i = out.left.size() / 2; i < out.left.size(); ++i)
+        {
+            const double phase = 2.0 * std::numbers::pi * f * static_cast<double>(i) / sampleRate;
+            re += out.left[i] * std::cos(phase);
+            im += out.left[i] * std::sin(phase);
+        }
+        if (re * re + im * im > bestPower)
+        {
+            bestPower = re * re + im * im;
+            bestCents = cents;
+        }
+    }
+    return bestCents;
+}
+} // namespace
+
+TEST_CASE("The band's pitched instruments play in tune")
+{
+    // A2 on the bass, A3 on the pad, in the middle of their ranges. (The pad's octave-down
+    // triangle makes a pitch tracker hear it an octave off, so the test looks at the spectrum.)
+    CHECK(std::abs(tuningError(LB_ASSETS_DIR "/sfz/bass/synth-bass.sfz", 45, 110.0)) <= 5.0);
+    CHECK(std::abs(tuningError(LB_ASSETS_DIR "/sfz/pad/warm-pad.sfz", 57, 220.0)) <= 5.0);
+
+    // The piano's samples are downloaded; without them this part has nothing to test.
+    if (std::filesystem::is_directory(LB_ASSETS_DIR "/sfz/keys/vcsl/piano"))
+        for (int note : { 57, 62, 69, 76 })
+        {
+            // Each sample is tuned by make_band_kits.py; pitch-shifting between samples and the
+            // piano's own slightly sharp overtones leave a few cents.
+            const double error = tuningError(LB_ASSETS_DIR "/sfz/keys/piano.sfz", note, 440.0 * std::pow(2.0, (note - 69) / 12.0));
+            INFO("piano note " << note << ": " << error << " cents");
+            CHECK(std::abs(error) <= 10.0);
+        }
 }
