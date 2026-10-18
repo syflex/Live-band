@@ -362,6 +362,11 @@ dominates.
   Notes are assigned to blocks by their nearest sample, so each plays exactly
   once whatever the rounding. Engine tests and a recorded session show the kick
   starting within 0.25 ms of the logged beat.
+- *As built in Phase 4:* re-taps re-lock within one bar. The tapped tempo takes effect at
+  once, and the phase correction is spread evenly over one bar (the style's beats per
+  bar), at a steady rate at most 15% off the new tempo; a correction too large for one bar
+  continues at the limit. Engine test: from one bar after the fourth re-tap, every beat is
+  within 0.06 ms of the tapped grid. The nudge keys multiply or divide the tempo by 1.01.
 
 ### 4.7 `BeatFollower` (engine thread, stretch goal)
 
@@ -392,6 +397,10 @@ picked up.
     subdivision, so 4/4 and 6/8 both work), BPM
     range, the sections (intro, verse, chorus, fill, ending), the chord chart
     per section, and the staged-entry plan.
+  - *As built in Phase 4:* 6/8, 9/8 and 12/8 count dotted-quarter beats (two to a 6/8
+    bar), and the tempo is in beats per minute; any x/4 counts quarters. Sections can
+    have intense variations (`patternIntense`, `patternIntenseMinor`), and a style can set
+    its part levels (`"mix"`, in dB), which the app applies as part gains.
   - One `.mid` file per section. Its tracks are named `drums`, `perc`, `bass`,
     `keys` and `pad`, and the music is written **in C major, with a C minor
     variant**.
@@ -408,8 +417,11 @@ picked up.
     4-bar boundary after the key locks.
   - *As built in Phase 3:* both plans are in `style.json` (`stagedEntry`); without a
     key, the bass, keys and pad all join at the boundary. Drums coming in after bar 1
-    bring the entry crash. Advancing a stage early by hand is not built yet. Fills
-    replace only the style's `fillLayers` (drums and percussion); the harmony carries on.
+    bring the entry crash. Fills replace only the style's `fillLayers` (drums and
+    percussion); the harmony carries on.
+  - *As built in Phase 4:* A (or MIDI CC 86) brings the next stage in on the next bar.
+    Without a key the harmony's stage only exists once the key is known, so it cannot
+    come in early.
 - **Section change:** pressing "next" queues the change. A drum fill replaces
   the last bar of the current 4-bar phrase, and the new section starts on the
   next phrase boundary.
@@ -427,6 +439,16 @@ picked up.
   - Loudness above the 80th percentile for 2 bars triggers a fill or crash,
     or switches to an "intense" pattern variant if the style has one.
   - Keep these effects subtle.
+  - *As built in Phase 4* (`VocalDynamics`, on the message thread): the level is
+    smoothed in dB, so it falls back as fast as it rose; each moment counts as a 3 dB
+    spread in the distribution, which fades over 10 minutes, so a very even singer's
+    small wobbles do not move the band; it stays neutral until 8 s of singing, relaxes
+    back without singing, and ignores breaths under a second. The velocity scale runs
+    from 0.8 through 1 (the 50th percentile) to 1.15, linearly. Two bars above the 80th
+    percentile switch to the intense variation on the next downbeat, with the entry
+    crash; two bars below the 60th, or without singing, switch back on a downbeat. Both
+    styles have intense variations of the verse and chorus. The count-in is never scaled.
+    "Follow my voice" switches it off.
 
 ### 4.9 `SfizzInstrument`, `Mixer`, `AudioEngine`
 - **`SfizzInstrument`** implements the small `Instrument` interface:
@@ -458,6 +480,8 @@ picked up.
 | Fill now | F | CC 83 |
 | Key lock / unlock | K | — |
 | Key ±1 semitone, major/minor | ↑ / ↓ / M | — |
+| Nudge the tempo ±1% | ← / → | CC 84 / CC 85 |
+| Bring in the next parts of the staged entry | A | CC 86 |
 | Hold tempo (no follow) | H | — |
 | Panic | Esc | — |
 
@@ -663,22 +687,38 @@ Results: [docs/results/PHASE3_RESULTS.md](results/PHASE3_RESULTS.md).
     running app had 64 overruns in 5 minutes with the full band against 55 with the drums
     alone. The laptop soak with the full band decides whether that is still a problem.
 
-### Phase 4: Feel, control and the 6/8 style (week 4)
-- [ ] Vocal loudness drives velocity, fills and the intense variant.
+### Phase 4: Feel, control and the 6/8 style (week 4) — built; laptop checks pending
+Results: [docs/results/PHASE4_RESULTS.md](results/PHASE4_RESULTS.md).
+
+- [x] Vocal loudness drives velocity and the intense variant (`VocalDynamics`, the
+      "Follow my voice" switch). Intense verse and chorus variations for both styles,
+      starting with a crash.
 - [ ] Section changes: Phase 2 built the arranger-keyboard behaviour (fill now,
       new section on the next bar). Add phrase-aligned changes only if the owner
       prefers them after trying it.
-- [x] Re-tap during playback (done in Phase 2: four taps or more steer the band
-      onto the tapped tempo and beat within a few beats).
-- [ ] Nudge keys change the tempo by ±1%.
-- [ ] The **Nigerian worship** style (6/8): pad- and piano-led, soft drums,
-      with its own staged entry.
+- [x] Re-tap during playback: four taps or more re-lock the band within one bar
+      (Phase 2 took a few beats).
+- [x] Nudge keys change the tempo by ±1% (Left and Right, MIDI CC 84 and 85).
+- [x] The **Nigerian worship** style (6/8): pad- and piano-led, soft drums,
+      with its own staged entry and part levels. 6/8 counted in dotted quarters
+      throughout. **To be reviewed by a Nigerian church musician.**
+- [x] A style picker in the app, and bringing in the next parts of the staged entry by
+      hand (A, MIDI CC 86).
 - **Exit:**
   - Section changes land where the owner expects them (next bar, or the phrase
-    boundary if that option is added), with the fill before them.
+    boundary if that option is added), with the fill before them: **for the owner to
+    decide** after trying the arranger-keyboard behaviour on the laptop.
   - Re-tapping re-locks within one bar, with no hanging notes and no audible
-    jump.
-  - The 6/8 style plays in time, with transposition and staged entry working.
+    jump: **met** (engine test: every beat within 0.015 ms and 0.056 ms of the tapped
+    grid one bar after the fourth tap, no beat more than 15% early or late; 30 simulated
+    minutes of random re-taps, loudness, staged entries and restarts left no note
+    hanging).
+  - The 6/8 style plays in time, with transposition and staged entry working: **met**
+    on the cloud machine (engine test from four taps at 66 BPM, the registers in all 24
+    keys, and the running app); to repeat by ear on the laptop.
+  - Not an exit criterion: the band turns intense 6.6 s after the singer gets 12 dB
+    louder (engine test), and the 30-minute engine soak with loudness following had no
+    callback over budget in CPU time (median 4.7%).
 
 ### Stretch goal: automatic tempo following
 Only if time is left after Phase 5, following the design in section 4.7.
@@ -756,9 +796,14 @@ The first round of questions is answered in section 0. Still open:
    expect.
 2. Which **Lenovo model** is the laptop (Settings → System → About)? It becomes
    the reference laptop for the CPU criterion.
-3. Is there a **Nigerian keyboardist or producer** who could review the
-   generated grooves before the demo? The Afrobeats patterns are written out as
-   grids in `tools/python/make_grooves.py` and drawn in the Phase 2 results.
+3. Is there a **Nigerian keyboardist or producer**, or a church musician, who could
+   review the generated grooves before the demo? The Afrobeats and worship 6/8 patterns
+   are written out as grids in `tools/python/make_grooves.py` and drawn in the Phase 2
+   and Phase 4 results.
 4. **Section changes:** the band changes section like an arranger keyboard (fill
    now, new section on the next bar). Is that how the singer or band leader
    expects it, or should changes wait for the end of a 4-bar phrase?
+5. **Following the singer's loudness:** is the band's reaction natural, too much or too
+   little? It plays up to 15% harder or 20% softer, switches to the fuller variation
+   after two loud bars, and judges loudness against the singer's own range in the
+   session, so after a loud passage it plays a little softer than at the start.

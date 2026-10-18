@@ -3,8 +3,9 @@
 This guide gets LiveBand running on the Lenovo laptop with the Jedel headset,
 walks through the Phase 0 measurements, shows the Phase 1 features (the live
 note display, voice files and recording), the Phase 2 band (drums and
-percussion that start when you tap the beat) and Phase 3: the band hears the key
-you sing in and adds bass, piano and pad.
+percussion that start when you tap the beat), Phase 3 (the band hears the key you
+sing in and adds bass, piano and pad) and Phase 4: a worship style in 6/8, a band
+that follows how loud you sing, and finer tempo control.
 
 ## 1. Get the app
 
@@ -217,7 +218,36 @@ it took. Record a few of them (**Record**): the recordings stay on the laptop, a
 `input.wav` lets the key detection be re-tuned on real Nigerian singing later. Please
 do not put them in the GitHub repository; it is public.
 
-## 8. What to send back
+## 8. Feel, control and the 6/8 style (Phase 4)
+
+![The worship style in 6/8 playing in G major](images/phase4/app-worship.png)
+
+1. **Choose a style** in the first box of the Band row: **Afrobeats** or **Worship 6/8**.
+   Changing it stops the band. In 6/8, tap the two beats of each bar (the "1" and the
+   "4" of the six eighths), the slow pulse people clap to; the count-in plays six sticks.
+   The worship style is led by the pad and piano, with soft drums; with the key known
+   it comes in with pad and piano, then bass and shaker, then the drums.
+2. **Follow my voice** (on the Parts row, on at first) makes the band follow how loud you
+   sing, against your own range: sing out and it plays harder; keep singing out for two bars
+   and it switches to a fuller version (the band line says **full**) with a crash; sing
+   quietly and it plays softer, back to normal after two quieter bars. The text beside
+   the switch says what it is doing. Switch it off to have the band play as written.
+3. **Nudge the tempo** with the **Left** and **Right** arrows: 1% slower or faster each
+   press, without moving the beat (MIDI controllers 84 and 85).
+4. **Re-tap while it plays:** four taps on your beat pull the band onto it within one
+   bar, by playing that bar a little faster or slower.
+5. **A** brings the next parts of the staged entry in on the next bar, if you do not want
+   to wait (MIDI controller 86).
+6. **Section changes** (N, as since Phase 2) work like an arranger keyboard: the fill plays
+   to the end of the bar and the new section starts on the next one. Try it in a few
+   songs and tell us whether that suits, or whether the change should wait for the end of
+   a four-bar phrase.
+
+Please tell us whether the 6/8 groove and the worship parts sound right for Nigerian
+churches, and whether the band's reaction to your loudness is natural, too much or too
+little.
+
+## 9. What to send back
 
 - The copied report, taken at the smallest buffer that works without crackles, with
   the full band playing (pad, piano and bass in).
@@ -226,6 +256,9 @@ do not put them in the GitHub repository; it is public.
 - For Phase 3: the songs you tried, the key the app locked and the right key, how
   long it took, and whether the bass, piano and pad parts sound right for the style.
   What would a Nigerian keyboardist change?
+- For Phase 4: how the worship style in 6/8 feels, how the band follows your loudness
+  (natural, too much or too little), whether re-tapping and nudging feel smooth, and
+  whether section changes should stay on the next bar or wait for the phrase.
 - Whether you heard crackles, or an echo of your own voice with **Hear my
   voice** on.
 - The LatencyMon verdict.
@@ -243,5 +276,6 @@ do not put them in the GitHub repository; it is public.
 | Overruns | 0 | Times the app was too slow and the sound had a gap. |
 | Key | | The key the band plays, and the key the app hears in your singing, with how sure it is. |
 | Singer's tuning | anything | How far your singing is from A440, in cents. The key detection allows for it. |
+| Dynamics | | How hard the band plays because of your loudness (x1.00 is as written), whether it plays its fuller version, and where your level sits in your own range. |
 | Driver-reported dropouts | 0 | Gaps the driver noticed. Some drivers do not report this. |
 | Real-time allocations | 0 | Debug builds only: memory allocations in the audio thread, which must never happen. |
