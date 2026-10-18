@@ -17,10 +17,12 @@ __pycache__/
 *.pyc
 .venv/
 
-# Third-party sample kits are downloaded, not committed (see THIRD_PARTY.md).
-# The tiny generated test instrument is the exception.
+# Third-party samples are downloaded by tools/python/fetch_assets.py, not committed
+# (see THIRD_PARTY.md). The kit definitions and the generated samples are committed.
 /assets/sfz/*
 !/assets/sfz/test/
+!/assets/sfz/afro-kit/
+/assets/sfz/afro-kit/vcsl/
 
 # Vocal recordings stay out of this public repository (see docs/IMPLEMENTATION_PLAN.md, section 0).
 /testdata/*

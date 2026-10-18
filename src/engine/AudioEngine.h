@@ -2,32 +2,52 @@
 
 #include "audio/AnalysisFrame.h"
 #include "audio/LatencyProbe.h"
+#include "audio/Limiter.h"
 #include "audio/VocalAnalyzer.h"
 #include "common/CallbackStats.h"
 #include "common/SpscQueue.h"
+#include "common/TimeMap.h"
 #include "engine/SessionRecorder.h"
 #include "engine/SfizzInstrument.h"
 #include "music/ClickTrack.h"
+#include "music/PatternPlayer.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace lb
 {
 
 // Owns everything that runs in the audio callback: voice input (mic or a file), the vocal
-// analysis, voice pass-through, a test instrument, the click track, session recording, the
-// latency probe, level meters and callback timing.
+// analysis, voice pass-through, the band (a pattern player driving the drum kit), a test
+// instrument, the click track, the master limiter, session recording, the latency probe,
+// level meters and callback timing.
 //
 // Methods marked "message thread" must only be called from the JUCE message thread, which is
-// the single producer of the command queue and the single consumer of the analysis and
-// click queues.
+// the single producer of the command queue and the single consumer of the analysis, click
+// and beat queues.
 class AudioEngine final : public juce::AudioIODeviceCallback
 {
 public:
+    // Seconds on a steady clock. The default is JUCE's high-resolution millisecond counter,
+    // the clock MIDI input timestamps use; tests replace it.
+    using Clock = double (*)();
+    static double systemClock() noexcept;
+
+    struct BandStatus
+    {
+        BandState state = BandState::stopped;
+        int section = 0;
+        int pendingSection = -1;
+        bool fillScheduled = false;
+        double samplesPerBeat = 0.0;
+        double bpm = 0.0;
+    };
+
     struct DeviceInfo
     {
         double sampleRate = 0.0;
@@ -47,7 +67,40 @@ public:
 
     // Message thread, while this engine is NOT registered as an audio callback.
     bool loadInstrument(const juce::File& sfzFile);
+    bool loadDrumKit(const juce::File& sfzFile);
     void setFileInput(std::vector<float> samples, const juce::String& name);
+    void setClock(Clock clock) noexcept { clock_ = clock; }
+
+    // Message thread. The band plays this style from now on (it stops first). The engine keeps
+    // every style it was given until it is destroyed, so the audio thread never reads a freed one.
+    void setStyle(std::unique_ptr<Style> style);
+    const Style* style() const noexcept { return style_; }
+    juce::String drumKitName() const { return drumKitName_; }
+
+    // Message thread: band commands, carried out at the start of the next callback.
+    void startBand(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars) noexcept;
+    void stopBand() noexcept;    // a fill, then the ending
+    void stopBandNow() noexcept; // silence at once
+    void nextSection() noexcept;
+    void selectSection(int section) noexcept;
+    void fill() noexcept;
+    void setBandTempo(double samplesPerBeat) noexcept;
+    void steerBand(std::int64_t sample, double samplesPerBeat) noexcept; // a beat falls on `sample`
+    void setLayerEnabled(int layer, bool enabled) noexcept;
+    bool isLayerEnabled(int layer) const noexcept { return (layerMask_.load() & (1u << layer)) != 0; }
+    void setDrumsGain(float linearGain) noexcept { drumsGain_.store(linearGain); }
+    bool popBeatTick(BeatTick& tick) noexcept { return beatTicks_.pop(tick); }
+
+    // Any thread.
+    BandStatus bandStatus() const noexcept;
+    double now() const noexcept { return clock_(); }
+    // The sample the audio thread is computing at a given clock time; false before audio runs.
+    bool sampleAtTime(double seconds, double& sample) const noexcept { return timeMap_.sampleAt(seconds, sample); }
+    // How long a computed sample takes to reach the ears: half the measured round trip when
+    // the latency test has run, otherwise the driver's output latency plus one buffer.
+    int outputLatencySamples() const noexcept;
+    void setMeasuredRoundTripLatency(int samples) noexcept { measuredRoundTrip_.store(samples); }
+    std::uint64_t droppedBeatTicks() const noexcept { return droppedTicks_.load(std::memory_order_relaxed); }
 
     // Message thread.
     juce::String instrumentName() const { return instrumentName_; }
@@ -106,7 +159,17 @@ private:
             noteOff,
             allNotesOff,
             startSession,
-            stopSession
+            stopSession,
+            setStyle,
+            startBand,
+            stopBand,
+            stopBandNow,
+            nextSection,
+            selectSection,
+            fill,
+            setBandTempo,
+            steerBand,
+            setLayerMask
         };
 
         Type type = Type::noteOn;
@@ -114,35 +177,56 @@ private:
         std::uint8_t velocity = 0;
         bool clickEnabled = false;
         ClickSettings click;
+        const Style* style = nullptr;
+        std::int64_t sample = 0;
+        double samplesPerBeat = 0.0;
+        int section = 0;
+        int countInBars = 0;
+        std::uint32_t mask = 0;
     };
 
     void pushCommand(const Command& command) noexcept;
+    void pushBandCommand(Command::Type type) noexcept;
     void applyCommands() noexcept;
+    void renderBand(std::int64_t chunkStart, int numSamples) noexcept;
+    void publishBandStatus() noexcept;
     void processChunk(const float* mic, float* const* outputs, int numOutputs, int offset, int numSamples) noexcept;
     const float* readFileInput(int numSamples) noexcept;
     static void raisePeak(std::atomic<float>& peak, const float* samples, int numSamples) noexcept;
+    static void addRamped(float* out, int offset, const float* in, float startGain, float endGain, int numSamples) noexcept;
 
     SfizzInstrument instrument_;
     juce::String instrumentName_;
+    SfizzInstrument drumKit_;
+    juce::String drumKitName_;
+    std::vector<std::unique_ptr<Style>> styles_; // owned for the engine's lifetime
+    const Style* style_ = nullptr;               // message thread's view
+    Clock clock_ = &AudioEngine::systemClock;
     std::vector<float> fileInput_;
     juce::String fileInputName_;
 
     SpscQueue<Command> commands_ { 256 };
     SpscQueue<AnalysisFrame> analysisFrames_ { 2048 }; // about 16 s of frames
     SpscQueue<ClickEvent> clickEvents_ { 512 };
+    SpscQueue<BeatTick> beatTicks_ { 512 };
 
     LatencyProbe probe_;
     CallbackStats stats_;
     VocalAnalyzer analyzer_;
     ClickTrack clickTrack_;
+    PatternPlayer player_;
+    Limiter limiter_;
+    TimeMap timeMap_;
     SessionRecorder recorder_;
 
     // Sized in audioDeviceAboutToStart(); used only by the audio thread afterwards.
     juce::AudioBuffer<float> instrumentBuffer_;
+    juce::AudioBuffer<float> kitBuffer_;
     juce::AudioBuffer<float> scratch_; // channels: probe signal, click, file voice, silence
     int maxBlockSize_ = 0;
     double sampleRate_ = 0.0;
     float currentMonitorGain_ = 0.0f;
+    float currentDrumsGain_ = 1.0f;
     std::size_t filePosition_ = 0;
     std::int64_t sampleTime_ = 0; // timeline position of the current callback's first sample
     bool sessionActive_ = false;
@@ -157,6 +241,17 @@ private:
     std::atomic<std::uint64_t> droppedCommands_ { 0 };
     std::atomic<std::uint64_t> droppedFrames_ { 0 };
     std::atomic<std::uint64_t> droppedClicks_ { 0 };
+    std::atomic<std::uint64_t> droppedTicks_ { 0 };
+    std::atomic<float> drumsGain_ { 1.0f };
+    std::atomic<std::uint32_t> layerMask_ { 0xffffffffu };
+    std::atomic<int> measuredRoundTrip_ { 0 };
+
+    // Band status, published by the audio thread after each callback.
+    std::atomic<int> bandState_ { 0 };
+    std::atomic<int> bandSection_ { 0 };
+    std::atomic<int> bandPendingSection_ { -1 };
+    std::atomic<bool> bandFillScheduled_ { false };
+    std::atomic<double> bandSamplesPerBeat_ { 0.0 };
     std::atomic<std::int64_t> publishedSampleTime_ { 0 };
     std::atomic<std::int64_t> sessionStart_ { -1 };
 

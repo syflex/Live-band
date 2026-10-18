@@ -19,6 +19,16 @@ jobs:
         with:
           arch: x64
 
+      - name: Cache the drum kit samples
+        uses: actions/cache@v4
+        with:
+          path: assets/sfz/afro-kit/vcsl
+          key: vcsl-${{ hashFiles('assets/sfz/afro-kit/samples.json') }}
+
+      # The build copies the kit next to the app, so the download below is ready to play.
+      - name: Fetch the drum kit samples (CC0, Versilian Community Sample Library)
+        run: python tools/python/fetch_assets.py
+
       - name: Configure
         run: cmake --preset windows-release
 
@@ -51,6 +61,20 @@ jobs:
             libxinerama-dev libxcursor-dev libxcomposite-dev libxext-dev libxi-dev \
             libfreetype-dev libfontconfig1-dev libgl1-mesa-dev
 
+      - name: The committed grooves match their generator
+        run: |
+          python3 tools/python/make_grooves.py
+          git diff --exit-code -- assets/grooves
+
+      - name: Cache the drum kit samples
+        uses: actions/cache@v4
+        with:
+          path: assets/sfz/afro-kit/vcsl
+          key: vcsl-${{ hashFiles('assets/sfz/afro-kit/samples.json') }}
+
+      - name: Fetch the drum kit samples (CC0, Versilian Community Sample Library)
+        run: python3 tools/python/fetch_assets.py
+
       - name: Configure
         run: cmake --preset linux-debug
 
@@ -59,6 +83,12 @@ jobs:
 
       - name: Test
         run: ctest --preset linux-debug
+
+      - name: Render the groove through the full kit
+        run: >
+          out/build/linux-debug/lb-render_artefacts/Debug/lb-render
+          --style assets/grooves/afrobeats --kit assets/sfz/afro-kit/afro-kit.sfz
+          --plan Verse:2,Chorus:2 --count-in --out afrobeats-check.wav
 
   evaluation:
     name: Pitch and onset accuracy on real singing (vocadito)

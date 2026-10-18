@@ -3,6 +3,7 @@
 #include "common/RtAllocGuard.h"
 #include "engine/AudioDeviceSetup.h"
 #include "engine/AudioFileLoader.h"
+#include "engine/GrooveLoader.h"
 
 #include <algorithm>
 #include <utility>
@@ -14,6 +15,9 @@ constexpr auto latencyMsKey = "latency.roundTripMs";
 constexpr auto latencyDeviceKey = "latency.device";
 constexpr auto latencyDateKey = "latency.measuredAt";
 constexpr auto voiceFolderKey = "voiceFile.folder";
+constexpr auto bandVolumeKey = "band.volumeDb";
+constexpr auto bandDrumsKey = "band.drums";
+constexpr auto bandPercKey = "band.perc";
 
 constexpr float meterFloorDb = -60.0f;
 constexpr float meterDecayDbPerTick = 1.5f; // at 30 Hz, about 45 dB per second
@@ -71,13 +75,17 @@ MainComponent::MainComponent()
     options.osxLibrarySubFolder = "Application Support";
     properties_.setStorageParameters(options);
 
-    // Load the test instrument before audio starts; loading is not real-time safe.
+    // Load the instruments and the groove before audio starts; loading is not real-time safe.
     engine_.loadInstrument(findAssetsDirectory().getChildFile("sfz/test/sine.sfz"));
+    loadBand();
 
     const auto savedDevice = properties_.getUserSettings()->getXmlValue(audioDeviceKey);
     deviceError_ = lb::openAudioDevice(deviceManager_, savedDevice.get());
     deviceManager_.addAudioCallback(&engine_);
     deviceManager_.addChangeListener(this);
+    deviceManager_.addMidiInputDeviceCallback({}, this);
+    enableMidiInputs();
+    applyLatencyCompensation();
     pitchView_.setSampleRate(engine_.deviceInfo().sampleRate > 0.0 ? engine_.deviceInfo().sampleRate : 48000.0);
 
     for (auto* button : { &settingsButton_, &latencyButton_, &loadButton_, &loadVoiceButton_, &recordButton_, &showRecordingsButton_,
@@ -174,11 +182,15 @@ MainComponent::MainComponent()
     addAndMakeVisible(noteDisplay_);
     addAndMakeVisible(pitchView_);
 
-    hint_.setText("Keys A S D F G H J K play test notes (Esc stops them). Drop a WAV file here to use it as the voice. "
-                  "Only turn on \"Hear my voice\" while wearing headphones, or it will howl.",
+    hint_.setText("Band keys: Space taps the beat (four taps start the band), Enter starts or stops, N next section, F fill, "
+                  "Esc stops at once. A MIDI pedal or pad taps too.\n"
+                  "Keys 1 to 8 play test notes. Drop a WAV file here to use it as the voice. Use \"Hear my voice\" only with headphones.",
                   juce::dontSendNotification);
-    hint_.setJustificationType(juce::Justification::centredLeft);
+    hint_.setJustificationType(juce::Justification::topLeft);
+    hint_.setMinimumHorizontalScale(1.0f);
     addAndMakeVisible(hint_);
+
+    setUpBandControls();
 
     report_.setMultiLine(true);
     report_.setReadOnly(true);
@@ -188,7 +200,7 @@ MainComponent::MainComponent()
     addAndMakeVisible(report_);
 
     setWantsKeyboardFocus(true);
-    setSize(960, 820);
+    setSize(960, 900);
     updateControls();
     updateReport();
     startTimerHz(30);
@@ -199,6 +211,7 @@ MainComponent::~MainComponent()
     stopTimer();
     if (recording_)
         stopRecording({});
+    deviceManager_.removeMidiInputDeviceCallback({}, this);
     deviceManager_.removeChangeListener(this);
     deviceManager_.removeAudioCallback(&engine_);
     properties_.saveIfNeeded();
@@ -228,7 +241,32 @@ void MainComponent::resized()
     latencyButton_.setBounds(row.removeFromLeft(140));
     gap(row, 8);
     loadButton_.setBounds(row.removeFromLeft(110));
-    area.removeFromTop(8);
+    area.removeFromTop(10);
+
+    row = area.removeFromTop(30);
+    bandLabel_.setBounds(row.removeFromLeft(60));
+    startButton_.setBounds(row.removeFromLeft(80));
+    gap(row, 6);
+    tapButton_.setBounds(row.removeFromLeft(80));
+    gap(row, 10);
+    bandBpmSlider_.setBounds(row.removeFromLeft(150));
+    gap(row, 10);
+    sectionBox_.setBounds(row.removeFromLeft(110));
+    gap(row, 6);
+    nextButton_.setBounds(row.removeFromLeft(70));
+    gap(row, 6);
+    fillButton_.setBounds(row.removeFromLeft(70));
+    gap(row, 14);
+    drumsToggle_.setBounds(row.removeFromLeft(80));
+    percToggle_.setBounds(row.removeFromLeft(70));
+    area.removeFromTop(4);
+
+    row = area.removeFromTop(30);
+    row.removeFromLeft(60);
+    bandGainSlider_.setBounds(row.removeFromRight(220));
+    bandGainLabel_.setBounds(row.removeFromRight(90));
+    beatLamps_.setBounds(row);
+    area.removeFromTop(10);
 
     row = area.removeFromTop(30);
     voiceLabel_.setBounds(row.removeFromLeft(60));
@@ -267,7 +305,7 @@ void MainComponent::resized()
     pitchView_.setBounds(analysisRow);
     area.removeFromTop(4);
 
-    hint_.setBounds(area.removeFromTop(30));
+    hint_.setBounds(area.removeFromTop(40));
     area.removeFromTop(4);
     report_.setBounds(area);
 }
@@ -276,8 +314,36 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
 {
     if (key == juce::KeyPress::escapeKey)
     {
+        band_.stopNow();
         engine_.allNotesOff();
         testKeyDown_.fill(false);
+        return true;
+    }
+
+    // Band keys. The tap time is taken now, as close to the key press as the app gets.
+    const auto character = juce::CharacterFunctions::toLowerCase(static_cast<juce::juce_wchar>(key.getKeyCode()));
+    if (key == juce::KeyPress::spaceKey)
+    {
+        if (pressBandKey(spaceKey_))
+            band_.tap(engine_.now());
+        return true;
+    }
+    if (key == juce::KeyPress::returnKey)
+    {
+        if (pressBandKey(returnKey_))
+            band_.startStop();
+        return true;
+    }
+    if (character == nextKey_.keyCode && !key.getModifiers().isAnyModifierKeyDown())
+    {
+        if (pressBandKey(nextKey_))
+            band_.next();
+        return true;
+    }
+    if (character == fillKey_.keyCode && !key.getModifiers().isAnyModifierKeyDown())
+    {
+        if (pressBandKey(fillKey_))
+            band_.fill();
         return true;
     }
 
@@ -289,6 +355,10 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
 
 bool MainComponent::keyStateChanged(bool)
 {
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_ })
+        if (key->held && !juce::KeyPress::isKeyCurrentlyDown(key->keyCode))
+            key->held = false;
+
     bool changed = false;
     for (std::size_t i = 0; i < testKeys.size(); ++i)
     {
@@ -308,6 +378,8 @@ bool MainComponent::keyStateChanged(bool)
 
 void MainComponent::focusLost(FocusChangeType)
 {
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_ })
+        key->held = false;
     for (std::size_t i = 0; i < testKeys.size(); ++i)
         if (std::exchange(testKeyDown_[i], false))
             engine_.noteOff(testKeys[i].midiNote);
@@ -331,6 +403,13 @@ void MainComponent::timerCallback()
     drainEngineQueues();
     noteDisplay_.repaint();
     pitchView_.repaint();
+    updateBand();
+
+    if (--ticksUntilMidiScan_ <= 0)
+    {
+        ticksUntilMidiScan_ = 60; // every two seconds: pick up pedals plugged in later
+        enableMidiInputs();
+    }
 
     if (recording_)
     {
@@ -369,6 +448,15 @@ void MainComponent::drainEngineQueues()
         if (engine_.isSessionOpen() && start >= 0)
             engine_.recorder().writeClick(click, start);
     }
+
+    lb::BeatTick tick;
+    while (engine_.popBeatTick(tick))
+    {
+        pendingTicks_.push_back(tick);
+        const auto start = engine_.sessionStartSample();
+        if (engine_.isSessionOpen() && start >= 0)
+            engine_.recorder().writeBeat(tick, start);
+    }
 }
 
 void MainComponent::changeListenerCallback(juce::ChangeBroadcaster*)
@@ -383,6 +471,11 @@ void MainComponent::changeListenerCallback(juce::ChangeBroadcaster*)
     // A loaded voice file has to match the device's sample rate.
     if (voiceFile_.existsAsFile() && rate > 0.0 && std::abs(rate - voiceFileRate_) > 0.5)
         loadVoiceFile(voiceFile_, false);
+
+    // A restart stops the band; the latency measurement only applies to the device it was made on.
+    pendingTicks_.clear();
+    heardTick_.reset();
+    applyLatencyCompensation();
 
     updateControls();
     updateReport();
@@ -589,6 +682,15 @@ juce::DynamicObject::Ptr MainComponent::sessionMetadata()
     click->setProperty("rampBars", sessionClick_.rampBars);
     meta->setProperty("click", juce::var(click.get()));
 
+    juce::DynamicObject::Ptr bandInfo = new juce::DynamicObject();
+    bandInfo->setProperty("style", engine_.style() != nullptr ? juce::String(engine_.style()->name) : juce::String());
+    bandInfo->setProperty("kit", engine_.drumKitName());
+    bandInfo->setProperty("drums", engine_.isLayerEnabled(0));
+    bandInfo->setProperty("perc", engine_.isLayerEnabled(1));
+    bandInfo->setProperty("volumeDb", bandGainSlider_.getValue());
+    bandInfo->setProperty("outputLatencySamples", engine_.outputLatencySamples());
+    meta->setProperty("band", juce::var(bandInfo.get()));
+
     auto* settings = properties_.getUserSettings();
     meta->setProperty("measuredRoundTripMs", settings->containsKey(latencyMsKey) ? juce::var(settings->getDoubleValue(latencyMsKey)) : juce::var());
     meta->setProperty("droppedAnalysisFrames", static_cast<juce::int64>(engine_.droppedAnalysisFrames()));
@@ -650,6 +752,7 @@ void MainComponent::confirmLatencyTest()
         if (result != 1)
             return;
 
+        band_.stopNow(); // the chirps need quiet
         latencyResultsMs_.clear();
         latencyFailedRuns_ = 0;
         latencyRunsLeft_ = latencyRunsPerTest;
@@ -726,6 +829,7 @@ void MainComponent::finishLatencyTest()
                                              + juce::String(info.bufferSize) + " samples");
     settings->setValue(latencyDateKey, juce::Time::getCurrentTime().toISO8601(true));
     properties_.saveIfNeeded();
+    applyLatencyCompensation();
     updateReport();
 }
 
@@ -833,6 +937,19 @@ juce::String MainComponent::buildReport()
     line("Analysis frames dropped:", juce::String(static_cast<juce::int64>(engine_.droppedAnalysisFrames())));
     if (recording_)
         line("Recording dropouts:", juce::String(static_cast<juce::int64>(engine_.recorder().droppedAudioBlocks())));
+    const auto band = engine_.bandStatus();
+    const char* states[] = { "stopped", "starting", "playing", "ending" };
+    line("Band:", juce::String(states[static_cast<int>(band.state)]) + (band.bpm > 0.0 ? ", " + juce::String(band.bpm, 1) + " BPM" : juce::String()));
+    line("Groove:", engine_.style() != nullptr ? juce::String(engine_.style()->name) : juce::String("not loaded"));
+    line("Drum kit:", engine_.drumKitName().isEmpty() ? juce::String("not loaded")
+                      : engine_.drumKitName() + (missingKitSamples_ > 0 ? " (" + juce::String(missingKitSamples_) + " samples missing)" : juce::String()));
+    if (info.sampleRate > 0.0)
+        line("Tap timing allows for:", formatMs(1000.0 * engine_.outputLatencySamples() / info.sampleRate) + " of output latency");
+    juce::StringArray midiNames;
+    for (const auto& midiDevice : juce::MidiInput::getAvailableDevices())
+        if (deviceManager_.isMidiInputDeviceEnabled(midiDevice.identifier))
+            midiNames.add(midiDevice.name);
+    line("MIDI inputs:", midiNames.isEmpty() ? juce::String("none") : midiNames.joinIntoString(", "));
     line("Test instrument:", engine_.instrumentName().isNotEmpty() ? engine_.instrumentName() : juce::String("not loaded"));
     line("Active voices:", juce::String(engine_.activeVoices()));
     if (engine_.droppedCommands() > 0)
@@ -863,4 +980,231 @@ juce::File MainComponent::findAssetsDirectory()
 juce::File MainComponent::sessionsDirectory()
 {
     return juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("LiveBand").getChildFile("Sessions");
+}
+
+//==================================================================================================
+// Band
+
+void MainComponent::loadBand()
+{
+    const auto assets = findAssetsDirectory();
+    const auto kitFile = assets.getChildFile("sfz/afro-kit/afro-kit.sfz");
+    if (!engine_.loadDrumKit(kitFile))
+        bandProblem_ = "Could not load the drum kit " + kitFile.getFullPathName();
+    missingKitSamples_ = countMissingSamples(kitFile.getParentDirectory());
+
+    juce::String error;
+    auto style = lb::loadStyle(assets.getChildFile("grooves/afrobeats"), error);
+    if (style == nullptr)
+    {
+        bandProblem_ = "Could not load the groove: " + error;
+        return;
+    }
+    engine_.setStyle(std::move(style));
+    band_.styleChanged();
+}
+
+int MainComponent::countMissingSamples(const juce::File& kitFolder)
+{
+    const auto manifest = juce::JSON::parse(kitFolder.getChildFile("samples.json"));
+    int missing = 0;
+    if (auto* files = manifest.getProperty("files", juce::var()).getDynamicObject())
+        for (const auto& entry : files->getProperties())
+            if (!kitFolder.getChildFile(entry.name.toString()).existsAsFile())
+                ++missing;
+    return missing;
+}
+
+void MainComponent::setUpBandControls()
+{
+    auto* settings = properties_.getUserSettings();
+    const auto* style = engine_.style();
+
+    for (auto* button : { &startButton_, &tapButton_, &nextButton_, &fillButton_ })
+    {
+        button->setWantsKeyboardFocus(false);
+        button->setEnabled(style != nullptr);
+        addAndMakeVisible(button);
+    }
+    startButton_.setTooltip("Start with a one-bar count-in, or stop with a fill and a final hit (Enter).");
+    startButton_.onClick = [this] { band_.startStop(); };
+    tapButton_.setTooltip("Tap the beat: four taps start the band on the next one; while it plays, taps move it (Space).");
+    tapButton_.setTriggeredOnMouseDown(true); // the tap is the press, not the release
+    tapButton_.onClick = [this] { band_.tap(engine_.now()); };
+    nextButton_.setTooltip("Play a fill, then the next section from the next bar (N).");
+    nextButton_.onClick = [this] { band_.next(); };
+    fillButton_.setTooltip("Play a fill to the end of the bar (F).");
+    fillButton_.onClick = [this] { band_.fill(); };
+
+    bandBpmSlider_.setSliderStyle(juce::Slider::IncDecButtons);
+    bandBpmSlider_.setRange(60.0, 160.0, 1.0);
+    bandBpmSlider_.setValue(band_.tempoBpm(), juce::dontSendNotification);
+    bandBpmSlider_.setTextValueSuffix(" BPM");
+    bandBpmSlider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 70, 22);
+    bandBpmSlider_.setTooltip("The band's tempo. Tapping sets it too.");
+    bandBpmSlider_.setWantsKeyboardFocus(false);
+    bandBpmSlider_.onValueChange = [this] { band_.setTempoBpm(bandBpmSlider_.getValue()); };
+    addAndMakeVisible(bandBpmSlider_);
+
+    if (style != nullptr)
+        for (std::size_t i = 0; i < style->sections.size(); ++i)
+            sectionBox_.addItem(juce::String(style->sections[i].name), static_cast<int>(i) + 1);
+    sectionBox_.setSelectedId(1, juce::dontSendNotification);
+    sectionBox_.setTooltip("The section the band starts with or goes to next.");
+    sectionBox_.setWantsKeyboardFocus(false);
+    sectionBox_.onChange = [this] { band_.selectSection(sectionBox_.getSelectedId() - 1); };
+    addAndMakeVisible(sectionBox_);
+
+    const auto setUpLayer = [&](juce::ToggleButton& toggle, int layer, const char* key) {
+        toggle.setToggleState(settings->getBoolValue(key, true), juce::dontSendNotification);
+        toggle.setWantsKeyboardFocus(false);
+        toggle.onClick = [this, &toggle, layer, key] {
+            engine_.setLayerEnabled(layer, toggle.getToggleState());
+            properties_.getUserSettings()->setValue(key, toggle.getToggleState());
+        };
+        engine_.setLayerEnabled(layer, toggle.getToggleState());
+        addAndMakeVisible(toggle);
+    };
+    setUpLayer(drumsToggle_, 0, bandDrumsKey);
+    setUpLayer(percToggle_, 1, bandPercKey);
+    drumsToggle_.setTooltip("Kick, snare, hi-hat, toms and cymbals.");
+    percToggle_.setTooltip("Shaker, congas, tambourine and bells.");
+
+    bandGainSlider_.setRange(-30.0, 6.0, 0.5);
+    bandGainSlider_.setValue(settings->getDoubleValue(bandVolumeKey, 0.0), juce::dontSendNotification);
+    bandGainSlider_.setTextValueSuffix(" dB");
+    bandGainSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 22);
+    bandGainSlider_.setWantsKeyboardFocus(false);
+    bandGainSlider_.onValueChange = [this] {
+        engine_.setDrumsGain(juce::Decibels::decibelsToGain(static_cast<float>(bandGainSlider_.getValue())));
+        properties_.getUserSettings()->setValue(bandVolumeKey, bandGainSlider_.getValue());
+    };
+    bandGainSlider_.onValueChange();
+    addAndMakeVisible(bandGainSlider_);
+
+    bandGainLabel_.setJustificationType(juce::Justification::centredRight);
+    for (auto* label : { &bandLabel_, &bandGainLabel_ })
+        addAndMakeVisible(label);
+    if (style != nullptr)
+        beatLamps_.setBeatsPerBar(style->beatsPerBar);
+    addAndMakeVisible(beatLamps_);
+}
+
+bool MainComponent::pressBandKey(BandKey& key)
+{
+    return !std::exchange(key.held, true); // false for the auto-repeats of a held key
+}
+
+void MainComponent::updateBand()
+{
+    const auto status = engine_.bandStatus();
+    const double rate = engine_.deviceInfo().sampleRate;
+
+    // Light the beat being heard now: sent to the output one output latency ago.
+    double now = 0.0;
+    double secondsSinceBeat = 0.0;
+    if (rate > 0.0 && engine_.sampleAtTime(engine_.now(), now))
+    {
+        const double heard = now - engine_.outputLatencySamples();
+        while (!pendingTicks_.empty() && static_cast<double>(pendingTicks_.front().sampleTime) <= heard)
+        {
+            heardTick_ = pendingTicks_.front();
+            pendingTicks_.pop_front();
+        }
+        if (heardTick_)
+        {
+            secondsSinceBeat = (heard - static_cast<double>(heardTick_->sampleTime)) / rate;
+            const double beatSeconds = heardTick_->bpm > 0.0f ? 60.0 / heardTick_->bpm : 1.0;
+            if (status.state == lb::BandState::stopped && pendingTicks_.empty() && secondsSinceBeat > beatSeconds)
+                heardTick_.reset();
+        }
+    }
+    beatLamps_.setBeat(heardTick_ ? &*heardTick_ : nullptr, secondsSinceBeat);
+    beatLamps_.setStatus(bandStatusText(status));
+
+    const bool running = status.state != lb::BandState::stopped;
+    startButton_.setButtonText(running ? "Stop" : "Start");
+    if (!bandBpmSlider_.isMouseButtonDown())
+    {
+        const double bpm = running && status.bpm > 0.0 ? status.bpm : band_.tempoBpm();
+        if (std::abs(bandBpmSlider_.getValue() - bpm) >= 0.5)
+            bandBpmSlider_.setValue(std::round(bpm), juce::dontSendNotification);
+    }
+    const int shownSection = status.pendingSection >= 0 ? status.pendingSection : status.section;
+    if (!sectionBox_.isPopupActive() && sectionBox_.getSelectedId() != shownSection + 1)
+        sectionBox_.setSelectedId(shownSection + 1, juce::dontSendNotification);
+}
+
+juce::String MainComponent::bandStatusText(const lb::AudioEngine::BandStatus& status) const
+{
+    if (bandProblem_.isNotEmpty())
+        return bandProblem_;
+    const auto* style = engine_.style();
+    if (style == nullptr)
+        return "No groove loaded.";
+    if (engine_.deviceInfo().sampleRate <= 0.0)
+        return "Open an audio device in Audio settings to play.";
+
+    const auto sectionName = [&](int index) {
+        return index >= 0 && index < static_cast<int>(style->sections.size()) ? juce::String(style->sections[static_cast<std::size_t>(index)].name)
+                                                                               : juce::String();
+    };
+    switch (status.state)
+    {
+        case lb::BandState::stopped:
+        {
+            const int taps = band_.tapCount();
+            if (taps > 0)
+                return "Tap " + juce::String(taps) + " of " + juce::String(lb::BandController::tapsToStart) + "...";
+            if (missingKitSamples_ > 0)
+                return "Only the kick is installed: run tools/python/fetch_assets.py for the rest of the kit.";
+            return "Ready. Tap the beat four times (Space), or press Enter for a count-in.";
+        }
+        case lb::BandState::waiting:
+            return "Coming in...";
+        case lb::BandState::ending:
+            return "Ending";
+        case lb::BandState::playing:
+            break;
+    }
+
+    if (heardTick_ && (heardTick_->flags & lb::BeatTick::countIn) != 0)
+        return "Count-in, " + juce::String(juce::roundToInt(status.bpm)) + " BPM";
+    juce::String text = sectionName(status.section);
+    if (heardTick_ && heardTick_->bar >= 0)
+        text << ", bar " << (heardTick_->bar + 1);
+    if (status.pendingSection >= 0)
+        text << "  -  fill, then " << sectionName(status.pendingSection);
+    else if (status.fillScheduled)
+        text << "  -  fill";
+    text << "  -  " << juce::String(status.bpm, 1) << " BPM";
+    return text;
+}
+
+void MainComponent::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message)
+{
+    // MIDI thread. The timestamp is on the same clock as AudioEngine::now(), so the tap keeps
+    // its timing however long the message thread takes to get to it.
+    juce::MessageManager::callAsync([safe = juce::Component::SafePointer<MainComponent>(this), message] {
+        if (safe != nullptr)
+            safe->band_.handleMidi(message);
+    });
+}
+
+void MainComponent::enableMidiInputs()
+{
+    for (const auto& device : juce::MidiInput::getAvailableDevices())
+        if (!deviceManager_.isMidiInputDeviceEnabled(device.identifier))
+            deviceManager_.setMidiInputDeviceEnabled(device.identifier, true);
+}
+
+void MainComponent::applyLatencyCompensation()
+{
+    // A saved round-trip measurement applies only to the driver, device and buffer it was made with.
+    auto* settings = properties_.getUserSettings();
+    const auto info = engine_.deviceInfo();
+    const auto setup = deviceManager_.getAudioDeviceSetup();
+    const auto current = deviceManager_.getCurrentAudioDeviceType() + " / " + setup.outputDeviceName + " / " + juce::String(info.bufferSize) + " samples";
+    const bool applies = info.sampleRate > 0.0 && settings->containsKey(latencyMsKey) && settings->getValue(latencyDeviceKey) == current;
+    engine_.setMeasuredRoundTripLatency(applies ? juce::roundToInt(settings->getDoubleValue(latencyMsKey) * info.sampleRate / 1000.0) : 0);
 }
