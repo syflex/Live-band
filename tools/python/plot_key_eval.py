@@ -71,9 +71,10 @@ def draw(ax, title: str, exact, compatible, lock, clips: int) -> None:
     ax.grid(True, color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
 
-    # The plan's exit criterion: 80% exact after 3 s of voice.
+    # The plan's first exit criterion: 80% exact after 3 s of voice. (The criterion agreed
+    # in Phase 3 is judged at the lock: the dot.)
     ax.plot([3.0], [0.8], marker="+", markersize=14, markeredgewidth=2, color=INK_SECONDARY, zorder=4)
-    ax.annotate("plan's target:\n80% exact at 3 s", (3.0, 0.8), xytext=(0.25, 0.95), color=INK_SECONDARY, fontsize=9, va="center",
+    ax.annotate("the plan's first target:\n80% exact at 3 s", (3.0, 0.8), xytext=(0.25, 0.95), color=INK_SECONDARY, fontsize=9, va="center",
                 arrowprops={"arrowstyle": "-", "color": INK_MUTED, "linewidth": 0.8})
 
     ax.plot(SECONDS, compatible, color=COMPATIBLE, linewidth=2, label="exact, relative or a fifth away")
@@ -112,7 +113,7 @@ def main() -> int:
             synthetic = {Path(r["file"]).stem: (args.labels.parent / r["file"], eval_key.normalize(r["key"])) for r in csv.DictReader(f)}
         panels.append(("Synthetic singing: hymn and folk tunes", synthetic))
     if args.csd:
-        panels.append(("Real singing: children's songs (CSD, test half)", eval_key.csd_references(args.csd, "test")))
+        panels.append(("Real singing: children's songs, CSD test half", eval_key.csd_references(args.csd, "test")))
     if args.vocadito:
         references = eval_key.vocadito_references(args.vocadito)
         panels.append(("Real singing: vocadito", {clip: (args.vocadito / "Audio" / f"{clip}.wav", key) for clip, key in references.items()}))

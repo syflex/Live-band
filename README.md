@@ -16,11 +16,11 @@ recordings.
 
 ![LiveBand after hearing a few seconds of singing in G major, with the key locked](docs/images/phase3/app-key-locked.png)
 
-When the key locks, it is right on 82% of 200 synthetic sung melodies (96% right or
-harmonically close), after a median 5.6 s of singing; the plan's target of 80% after
-3 s is not met (62%), and a change of target is proposed. In the engine tests the drums
-come in 0.3 ms from the tapped beat; on 40 clips of real singing, 97% of pitch frames
-are within 50 cents of the truth. See the results of
+On real singing it was not tuned on (94 recorded children's songs), the key locks after a
+median 6 s of voice and is exact 94% of the time, and exact, relative or a fifth away
+98%; after only 3 s the best guess is exact 80% of the time. In the engine tests the
+drums come in 0.3 ms from the tapped beat; on 40 clips of real singing, 97% of pitch
+frames are within 50 cents of the truth. See the results of
 [Phase 1](docs/results/PHASE1_RESULTS.md), [Phase 2](docs/results/PHASE2_RESULTS.md) and
 [Phase 3](docs/results/PHASE3_RESULTS.md).
 
