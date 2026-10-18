@@ -418,7 +418,7 @@ W_BAR = SIX_EIGHT.steps_per_bar
 
 def worship_bass(progression, busy: bool) -> list[tuple[int, int, int, int]]:
     """The root on 1, the fifth on 4 and a step to the next chord on the last eighth; busy
-    adds the octave on the third eighth."""
+    plays the root for a dotted eighth, then the octave (two against the three eighths)."""
     notes = []
     for bar, (root, quality) in enumerate(progression):
         base = bar * W_BAR

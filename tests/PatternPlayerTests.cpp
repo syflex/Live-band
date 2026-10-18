@@ -507,6 +507,127 @@ TEST_CASE("PatternPlayer keeps time over 30 minutes and never leaves a note hang
     CHECK(player.droppedEvents() == 0);
 }
 
+TEST_CASE("PatternPlayer: 30 minutes of re-taps, loudness, staged entries and restarts leave no note hanging and play every beat once")
+{
+    auto style = makeHarmonicStyle();
+    auto& a = style.sections[0];
+    a.mainIntense = a.main; // the intense variation holds other notes, across the bar line
+    for (auto& n : a.mainIntense.notes)
+        if (n.layer == padLayer)
+            n.lengthBeats = 5.9f;
+    a.mainIntense.notes.push_back(note(1.5, bassG, bassLayer));
+    a.mainIntense.sort();
+    style.entryKeyKnown = { { 0, 1u << padLayer }, { 4, 0b0011u }, { 8, 1u << bassLayer } };
+    style.entryKeyUnknown = { { 0, 0b0011u } };
+    style.afterKeyLockLayers = 1u << bassLayer | 1u << padLayer;
+    REQUIRE(style.validate().empty());
+
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    const double baseSpb = 48000.0 * 60.0 / 104.0;
+
+    std::mt19937 random(12);
+    std::uniform_int_distribution<int> blockSize(16, 1024);
+    std::uniform_int_distribution<int> action(0, 300);
+    std::uniform_int_distribution<int> anyKey(-1, 23);
+    std::uniform_real_distribution<double> unit(0.0, 1.0);
+    std::int64_t t = 0, previousTick = -1, ticks = 0, starts = 0, intenseBeats = 0, onCount = 0, offCount = 0;
+    std::int64_t previousBeat = std::numeric_limits<std::int64_t>::min();
+    std::map<std::pair<int, int>, int> open;
+    for (int number = 0; number < 128; ++number)
+        for (int layer = 0; layer < 4; ++layer)
+            open[{ number, layer }] = 0; // so that counting in the audio section does not allocate
+    bool balanced = true, everyBeatOnce = true, steady = true;
+    const auto onNote = [&](const lb::PlayerNote& e) {
+        auto& count = open[{ e.note, e.layer }];
+        count += e.on ? 1 : -1;
+        balanced = balanced && count >= 0 && count <= 1;
+        (e.on ? onCount : offCount) += 1;
+    };
+    const auto onTick = [&](const lb::BeatTick& tick) {
+        ++ticks;
+        intenseBeats += (tick.flags & lb::BeatTick::intense) != 0 ? 1 : 0;
+        // Each beat follows the one before it, never skipped or played twice, and comes no more
+        // than 15% early or late for the tempos used (re-taps spread their correction).
+        const std::int64_t beat = static_cast<std::int64_t>(tick.bar) * 4 + tick.beat;
+        everyBeatOnce = everyBeatOnce && (previousBeat == std::numeric_limits<std::int64_t>::min() || beat == previousBeat + 1);
+        if (previousTick >= 0 && previousBeat != std::numeric_limits<std::int64_t>::min())
+        {
+            const auto interval = static_cast<double>(tick.sampleTime - previousTick);
+            steady = steady && interval > 0.9 * baseSpb / 1.15 - 1.0 && interval < 1.1 * baseSpb / 0.85 + 1.0;
+        }
+        previousBeat = beat;
+        previousTick = tick.sampleTime;
+    };
+    const auto start = [&] {
+        previousBeat = std::numeric_limits<std::int64_t>::min();
+        previousTick = -1;
+        const auto spb = baseSpb * (0.9 + 0.2 * unit(random));
+        const int countIn = unit(random) < 0.5 ? 1 : 0;
+        const int k = anyKey(random); // -1: no key yet
+        player.start(t + 1000 + static_cast<std::int64_t>(countIn * 4 * spb), spb, 0, countIn, k < 0 ? lb::Key {} : lb::Key::fromIndex(k));
+        ++starts;
+    };
+    start();
+
+    const auto before = lb::rt::allocationCount();
+    const std::int64_t end = static_cast<std::int64_t>(30 * 60 * rate);
+    bool stopping = false;
+    while (t < end)
+    {
+        const int n = blockSize(random);
+        {
+            const lb::rt::ScopedRealtimeSection realtime;
+            if (stopping && player.state() == lb::BandState::stopped)
+            {
+                stopping = false;
+                start();
+            }
+            else if (!stopping)
+            {
+                switch (action(random))
+                {
+                    case 0: player.nextSection(); break;
+                    case 1: player.fill(); break;
+                    case 2: player.setKey(lb::Key::fromIndex(std::max(0, anyKey(random)))); break;
+                    case 3: // four re-taps: a beat somewhere in the last beat, at a tempo within 10%
+                    case 4: player.steerToNearestBeat(t - static_cast<std::int64_t>(unit(random) * baseSpb), baseSpb * (0.9 + 0.2 * unit(random))); break;
+                    case 5:
+                    case 6: player.setDynamics(static_cast<float>(0.8 + 0.35 * unit(random)), unit(random) < 0.5); break;
+                    case 7: player.advanceEntry(); break;
+                    case 8:
+                        if (unit(random) < 0.1) // about every half minute: stop, and start again
+                        {
+                            player.stop();
+                            stopping = true;
+                        }
+                        break;
+                    default: break;
+                }
+            }
+            player.process(t, n, onNote, onTick);
+        }
+        t += n;
+    }
+    CHECK(lb::rt::allocationCount() == before);
+    // Stopped during a count-in, the band releases its notes in the next block, as the engine
+    // renders a block in every callback.
+    player.stop();
+    for (int i = 0; i < 4000 && (i == 0 || player.state() != lb::BandState::stopped); ++i, t += 256)
+        player.process(t, 256, onNote, onTick);
+    CHECK(player.state() == lb::BandState::stopped);
+    CHECK(starts > 5);
+    CHECK(intenseBeats > 1000);
+    CHECK(ticks > 30 * 104 * 3 / 4);
+    CHECK(everyBeatOnce);
+    CHECK(steady);
+    CHECK(balanced);
+    CHECK(onCount == offCount);
+    CHECK(player.sustainedNotes() == 0);
+    CHECK(player.droppedEvents() == 0);
+}
+
 TEST_CASE("PatternPlayer moves the pitched layers to the key, in their register, and plays minor keys in minor")
 {
     const auto style = makeHarmonicStyle();

@@ -133,7 +133,8 @@ public:
     {
         return state_ == BandState::waiting || state_ == BandState::stopped ? startSpb_ : clock_.samplesPerBeat();
     }
-    // Notes the player still has to release. Zero once the band has stopped.
+    // Notes the player still has to release. Zero once the band has stopped by itself, and
+    // after the next block once stopNow() (or stop() during the count-in) has stopped it.
     int sustainedNotes() const noexcept { return pendingCount_; }
     std::uint64_t droppedEvents() const noexcept { return droppedEvents_; }
 
