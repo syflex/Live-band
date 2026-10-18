@@ -36,8 +36,6 @@ const ProfilePair& pairFor(KeyProfile profile) noexcept
     }
     return krumhanslKessler;
 }
-
-constexpr double confidenceFullMargin = 0.2; // a margin this large counts as fully confident
 } // namespace
 
 std::string Key::name() const
@@ -181,6 +179,8 @@ void KeyEstimator::addNote(const SungNote& note) noexcept
     lastPitchClass_ = pitchClass;
     lastNoteWeight_ = weight;
     ++notes_;
+    if (settings_.autoLock && !locked_ && estimate().state == State::confident)
+        lock();
 }
 
 void KeyEstimator::addPhraseEnd() noexcept
@@ -189,6 +189,15 @@ void KeyEstimator::addPhraseEnd() noexcept
         return;
     histogram_[static_cast<std::size_t>(lastPitchClass_)] += settings_.phraseFinalBonus * lastNoteWeight_;
     lastPitchClass_ = -1; // once per phrase
+    if (settings_.autoLock && !locked_ && estimate().state == State::confident)
+        lock();
+}
+
+double KeyEstimator::requiredMargin(double voicedSeconds) const noexcept
+{
+    const double span = std::max(settings_.lockRampSeconds - settings_.minVoiceSeconds, 1e-9);
+    const double progress = std::clamp((voicedSeconds - settings_.minVoiceSeconds) / span, 0.0, 1.0);
+    return settings_.lockMarginStart + (settings_.lockMarginEnd - settings_.lockMarginStart) * progress;
 }
 
 void KeyEstimator::score(const std::array<double, 12>& histogram, KeyProfile profile, Key& best, double& bestR, Key& second,
@@ -246,10 +255,11 @@ KeyEstimator::Estimate KeyEstimator::estimate() const noexcept
     e.tuningCents = tuningCents();
     e.notes = notes_;
     score(histogram_, settings_.profile, e.best, e.correlation, e.second, e.margin);
+    e.requiredMargin = requiredMargin(voicedSeconds_);
     if (e.best.isValid())
     {
         e.margin = e.second.isValid() ? e.correlation - e.margin : e.correlation;
-        e.confidence = std::clamp(e.margin / confidenceFullMargin, 0.0, 1.0);
+        e.confidence = std::clamp(e.margin / std::max(e.requiredMargin, 1e-9), 0.0, 1.0);
     }
     else
     {
@@ -261,14 +271,9 @@ KeyEstimator::Estimate KeyEstimator::estimate() const noexcept
         e.state = State::locked;
         e.key = lockedKey_;
     }
-    else if (e.best.isValid() && voicedSeconds_ >= settings_.decisionSeconds)
+    else if (e.best.isValid() && voicedSeconds_ >= settings_.minVoiceSeconds)
     {
-        e.state = State::bestGuess;
-        e.key = e.best;
-    }
-    else if (e.best.isValid() && voicedSeconds_ >= settings_.provisionalSeconds && e.margin >= settings_.provisionalMargin)
-    {
-        e.state = State::provisional;
+        e.state = e.margin >= e.requiredMargin ? State::confident : State::guessing;
         e.key = e.best;
     }
     return e;

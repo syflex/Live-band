@@ -158,11 +158,11 @@ TEST_CASE("KeyEstimator corrects for a singer who is 45 cents sharp")
     CHECK(estimator.pitchClassOf(61.95) == 1); // C# for this singer, though nearest to D on the A440 grid
 }
 
-TEST_CASE("KeyEstimator waits, then gives a provisional key, a best guess, and holds a locked key")
+TEST_CASE("KeyEstimator waits, guesses, locks once confident, and holds the locked key")
 {
     lb::KeyEstimator estimator;
     lb::KeyEstimator::Settings settings;
-    settings.provisionalMargin = 0.0; // any lead counts, to test the timing alone
+    settings.autoLock = false; // locked by hand below
     estimator.setSettings(settings);
 
     // 1.5 s of voice: still listening.
@@ -170,17 +170,22 @@ TEST_CASE("KeyEstimator waits, then gives a provisional key, a best guess, and h
     CHECK(estimator.estimate().state == lb::KeyEstimator::State::listening);
     CHECK(!estimator.estimate().key.isValid());
 
-    t = sing(estimator, { { 71, 0.7 } }, t); // 2.2 s
-    CHECK(estimator.estimate().state == lb::KeyEstimator::State::provisional);
-
-    t = sing(estimator, { { 67, 0.5 }, { 66, 0.5 }, { 62, 0.5 } }, t); // 3.7 s
+    // Past 2 s: a guess, or already confident; either way a key to show.
+    t = sing(estimator, { { 71, 0.7 } }, t);
     auto e = estimator.estimate();
-    CHECK(e.state == lb::KeyEstimator::State::bestGuess);
+    CHECK((e.state == lb::KeyEstimator::State::guessing || e.state == lb::KeyEstimator::State::confident));
     CHECK(e.key == e.best);
+    CHECK(e.requiredMargin == Approx(0.25 - 0.15 * (e.voicedSeconds - 2.0) / 8.0).margin(1e-9));
+
+    // The whole tune: confident.
+    t = sing(estimator, twinkleD, t);
+    e = estimator.estimate();
+    CHECK(e.state == lb::KeyEstimator::State::confident);
+    CHECK(e.best == (lb::Key { 2, false }));
 
     estimator.lock();
     const lb::Key locked = estimator.estimate().key;
-    REQUIRE(locked.isValid());
+    REQUIRE(locked == (lb::Key { 2, false }));
 
     // The singer moves a tone up for a long time: the shadow follows, the locked key stays.
     std::vector<Note> higher = twinkleD;
@@ -196,6 +201,19 @@ TEST_CASE("KeyEstimator waits, then gives a provisional key, a best guess, and h
 
     estimator.unlock();
     CHECK(estimator.estimate().key == (lb::Key { 4, false }));
+}
+
+TEST_CASE("KeyEstimator locks by itself once the key is clear, and the margin it needs relaxes with time")
+{
+    lb::KeyEstimator estimator;
+    CHECK(estimator.requiredMargin(0.0) == Approx(0.25));
+    CHECK(estimator.requiredMargin(6.0) == Approx(0.175));
+    CHECK(estimator.requiredMargin(30.0) == Approx(0.1));
+
+    sing(estimator, twinkleD);
+    const auto e = estimator.estimate();
+    CHECK(e.state == lb::KeyEstimator::State::locked);
+    CHECK(e.key == (lb::Key { 2, false }));
 }
 
 TEST_CASE("KeyEstimator forgets an old key within the decay time when unlocked")

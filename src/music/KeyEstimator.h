@@ -110,10 +110,14 @@ private:
 //   last note of a phrase counts extra, because melodies tend to end on the tonic. Until the
 //   key locks, the histogram fades with a time constant of decaySeconds.
 // - Score: the Pearson correlation of the histogram with the 24 rotated profiles.
-// - Decision: nothing before provisionalSeconds of voice; a provisional key once the best
-//   key leads the second by provisionalMargin; the best guess, whatever the margin, from
-//   decisionSeconds. lock() freezes the key the band plays; the estimate keeps running as a
-//   shadow.
+// - Decision: nothing before minVoiceSeconds of voice; then the best key as a guess, which
+//   becomes confident when its correlation leads the second key's by the required margin.
+//   The margin starts at lockMarginStart and relaxes to lockMarginEnd by lockRampSeconds of
+//   voice, so a clear melody locks early and an ambiguous one is given more time. A
+//   confident key locks (with autoLock), and lock() and lock(key) lock by hand. While
+//   locked, the estimate keeps running as a shadow.
+//
+// The defaults come from tools/python/eval_key.py (docs/results/PHASE3_RESULTS.md).
 //
 // Real-time safe; used by one thread.
 class KeyEstimator
@@ -121,21 +125,24 @@ class KeyEstimator
 public:
     struct Settings
     {
-        KeyProfile profile = KeyProfile::krumhanslKessler;
+        KeyProfile profile = KeyProfile::temperleyKostkaPayne;
         double decaySeconds = 30.0;
         double phraseFinalBonus = 1.0; // extra weight for a phrase's last note, times its own
-        double provisionalSeconds = 2.0;
-        double decisionSeconds = 3.0;
-        double provisionalMargin = 0.1;
+        double minVoiceSeconds = 2.0;
+        double lockMarginStart = 0.25;
+        double lockMarginEnd = 0.1;
+        double lockRampSeconds = 10.0; // seconds of voice by which lockMarginEnd applies
+        bool autoLock = true;
         double tuningDecaySeconds = 60.0;
+        NoteSegmenter::Settings notes;
     };
 
     enum class State : std::uint8_t
     {
-        listening,   // not enough singing yet
-        provisional, // a likely key, still open to change
-        bestGuess,   // enough singing: the best key, with its confidence
-        locked       // fixed for the band; the estimate runs on as a shadow
+        listening, // not enough singing yet
+        guessing,  // the best key so far, not yet clear enough to lock
+        confident, // clear enough to lock (it locks at once when autoLock is on)
+        locked     // fixed for the band; the estimate runs on as a shadow
     };
 
     struct Estimate
@@ -145,14 +152,19 @@ public:
         Key best;     // the current best estimate (the shadow, when locked)
         Key second;
         double correlation = 0.0;
-        double margin = 0.0;     // correlation of the best minus the second
-        double confidence = 0.0; // 0 to 1, from the margin
+        double margin = 0.0;         // correlation of the best minus the second
+        double requiredMargin = 0.0; // the margin it needs now to be confident
+        double confidence = 0.0;     // 0 to 1: the margin as a share of the required margin
         double voicedSeconds = 0.0;
         double tuningCents = 0.0;
         int notes = 0;
     };
 
-    void setSettings(const Settings& settings) noexcept { settings_ = settings; }
+    void setSettings(const Settings& settings) noexcept
+    {
+        settings_ = settings;
+        segmenter_.setSettings(settings.notes);
+    }
     const Settings& settings() const noexcept { return settings_; }
     void reset() noexcept;
 
@@ -169,6 +181,7 @@ public:
     bool isLocked() const noexcept { return locked_; }
 
     Estimate estimate() const noexcept;
+    double requiredMargin(double voicedSeconds) const noexcept;
     const std::array<double, 12>& histogram() const noexcept { return histogram_; }
     double tuningCents() const noexcept;
     int pitchClassOf(double midi) const noexcept;
