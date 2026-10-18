@@ -11,7 +11,7 @@ Measured on 17 October 2026, on the `phase-2-play` branch.
 | The same, measured through the loopback on the Lenovo laptop | not yet measured | < 10 ms, < 0.5% | to do |
 | No hanging notes | every note-on released, after 30 simulated minutes of random section changes and fills, and after stops and panics | none | met |
 | No drift | the last beat of a simulated 30 minutes within **1 sample** of the ideal | < 1 sample | met |
-| 30-minute soak, file input, band playing: the engine's own work | worst callback **33%** of its time budget in CPU time, median 2.3%; 0 over budget in 674,813 callbacks | under 100% | met |
+| 30-minute soak, file input, band playing: the engine's own work | median **2.5%** of the time budget, 999 callbacks in 1000 under **12%**; 0 to 2 callbacks per run over budget, no more than a loop doing identical work on this machine | under 100% | met for the sustained cost; spikes need the laptop |
 | The same soak in the running app on the cloud machine | 0 driver dropouts; **45 overruns** in 678,738 callbacks (0.007%), from the OS pausing the audio thread | 0 xruns, 0 overruns | not met here; to repeat on the laptop |
 
 Like Phase 1, these measurements come from the cloud test machine: engine tests that
@@ -19,10 +19,11 @@ drive the audio engine with a simulated device, and the app itself running at re
 speed on a virtual sound device. The laptop test in
 [WINDOWS_SETUP.md](../WINDOWS_SETUP.md) (section 6) repeats the timing on real hardware.
 
-The soak overruns are explained under [Soak](#soak): the engine never needs more than a
-third of its time, but the cloud machine runs the app without real-time priority, so
-other work can pause the audio thread. On Windows, JUCE runs the audio thread at the
-"Pro Audio" priority, and the soak has to be repeated there.
+The soak overruns are explained under [Soak](#soak): the engine typically needs 2.5% of
+its time, but the cloud machine is a virtual machine that runs the app without real-time
+priority, so other work can pause or slow the audio thread. A control loop doing the
+same work in every callback shows the same rare spikes there. On Windows, JUCE runs the
+audio thread at the "Pro Audio" priority, and the soak has to be repeated there.
 
 ## What the band does
 
@@ -124,15 +125,26 @@ voice analysis listening to a looping vocadito clip, and the band playing Afrobe
 104 BPM, changing section and filling every 30 seconds.
 
 **The engine on its own** (`liveband_engine_tests "[soak]"`), as fast as the machine
-allows, timing each callback both by the wall clock and by the CPU time its thread used:
+allows, timing each callback both by the wall clock and by the CPU time its thread used.
+The same test group runs a **control**: a loop doing identical arithmetic in every
+"callback" (about three times the engine's typical cost), timed the same way. Ranges over
+repeated runs:
 
-| | Median | 99.9th percentile | Worst | Over budget |
+| Per callback, % of its 2.7 ms | Median | 99.9th percentile | Worst | Callbacks over budget, per run |
 |---|---|---|---|---|
-| CPU time | 2.3% | 7.8% | 32.7% | 0 |
-| Wall-clock time | 2.3% | 9.4% | 368% | 4 |
+| Engine, CPU time (10 runs) | 2.3 to 2.6% | 7.8 to 11.6% | 33 to 162% | 0 to 2 |
+| Control, CPU time (7 runs) | 7.8 to 7.9% | 21.8 to 23.6% | 94 to 643% | 0 to 8 |
+| Engine, wall-clock time (11 runs) | 2.3 to 2.6% | 9.4 to 15.7% | up to 1,076% | 4 to 26 |
 
-The four wall-clock overruns each used under 0.31 ms of CPU: the thread was not
-working, it was waiting for the OS to give it back the processor.
+The control does exactly the same work every time, yet its slowest callbacks take 20 to
+80 times its median, more often than the engine's. So the rare spikes, in CPU time as well
+as wall-clock time, come from the virtual machine (other guests, interrupts, time the
+hypervisor takes), not from the engine's work. The wall-clock overruns mostly used well
+under 1 ms of CPU: the thread was waiting for the processor. The test checks the
+sustained cost (the 99.9th percentile under 25%) and reports the spikes without failing
+on them.
+
+![The timing tests: tap entry, human timing, steering, and the soak with its control](../images/phase2/timing-tests.png)
 
 **The running app**, on the virtual sound device, for 1,801 seconds of real time
 (785 bars):
@@ -141,16 +153,16 @@ working, it was waiting for the OS to give it back the processor.
 
 The average load is 4.2%, the driver reported no dropouts, no analysis frames were
 dropped, and the band ended at bar 786 at the tempo it started with. But 87 callbacks
-took over 80% of their time and 45 over 100%, with one at 495% (13 ms). The engine
-test above shows the engine's work never comes near that. The container gives no
-process real-time priority (`ulimit -r` is 0, and every thread of the app runs at
-normal priority), so the audio thread waits behind the app's own window drawing, the
-sound server and anything else on the machine.
+took over 80% of their time and 45 over 100%, with one at 495% (13 ms). The engine's
+typical cost is 2.5%. The container gives no process real-time priority (`ulimit -r` is
+0, and every thread of the app runs at normal priority), so the audio thread also waits
+behind the app's own window drawing and the sound server, on top of the virtual
+machine's own pauses.
 
-So the exit criterion is **met for the engine but not shown for the app**: the app soak
-has to be repeated on the laptop (WINDOWS_SETUP.md, section 4, step 7, with the band
-playing), where WASAPI exclusive mode and MMCSS give the audio thread priority. The
-Phase 5 soak with LatencyMon is the final check.
+So the exit criterion is **met for the engine's sustained cost but not shown for the
+app**: the app soak has to be repeated on the laptop (WINDOWS_SETUP.md, section 4, step
+7, with the band playing), where WASAPI exclusive mode and MMCSS give the audio thread
+priority. The Phase 5 soak with LatencyMon is the final check.
 
 ## Cost
 
@@ -158,7 +170,7 @@ Phase 5 soak with LatencyMon is the final check.
 |---|---|
 | `lb-render`, Release, 42 s of Afrobeats through the full kit | 4.7 s on one core of the cloud machine (Xeon, 2.1 GHz), kit loading included: about 9× real time |
 | App, Release, 128-sample buffer, band plus voice analysis | average callback load 4.2% over 30 minutes |
-| Engine, CPU time per callback | median 2.3%, worst 32.7% of the budget |
+| Engine, CPU time per callback | median 2.3 to 2.6%, 99.9th percentile at most 11.6% of the budget |
 
 A Debug build renders the kit slower than real time (sfizz is not optimized in Debug),
 so the app must be built as Release for playing.

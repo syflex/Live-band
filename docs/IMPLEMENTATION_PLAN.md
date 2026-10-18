@@ -600,10 +600,11 @@ Results: [docs/results/PHASE2_RESULTS.md](results/PHASE2_RESULTS.md).
     loopback measurement on the real laptop is still to do
     (`tools/python/check_tap_entry.py`, see WINDOWS_SETUP.md section 6).
   - No hanging notes: **met** (unit tests, engine tests, `lb-render`).
-  - A 30-minute soak in file-input mode: **met for the engine** (worst callback 33% of
-    its time budget in CPU time, none over). The running app on the cloud machine,
-    which allows no real-time priority, had 45 overruns in 678,738 callbacks, all from
-    the OS pausing the audio thread. To repeat on the laptop.
+  - A 30-minute soak in file-input mode: **met for the engine's sustained cost** (median
+    2.5% of the time budget, 99.9th percentile under 12%). Rare spikes over budget
+    (0 to 2 per run) also hit a constant-work control loop on the cloud machine, a VM
+    with no real-time priority, where the running app had 45 overruns in 678,738
+    callbacks. To repeat on the laptop.
 
 ### Phase 3: Key and layering (week 3)
 - [ ] `NoteSegmenter`, the tuning offset, the histogram, the three or four key
