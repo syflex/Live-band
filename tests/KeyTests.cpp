@@ -46,6 +46,16 @@ const std::vector<Note> twinkleD {
     { 67, 0.45 }, { 67, 0.45 }, { 66, 0.45 }, { 66, 0.45 }, { 64, 0.45 }, { 64, 0.45 }, { 62, 0.9 }, { 0, 0.4 },
 };
 
+// "Twinkle" never sings C or C#, so it fits G major almost as well as D major. A phrase
+// through the leading tone, C#, settles it.
+const std::vector<Note> twinkleDWithCadence = [] {
+    auto melody = twinkleD;
+    for (const Note& note : std::vector<Note> { { 69, 0.45 }, { 71, 0.45 }, { 73, 0.45 }, { 74, 0.9 }, { 0, 0.4 },
+                                                { 73, 0.45 }, { 71, 0.45 }, { 69, 0.45 }, { 64, 0.45 }, { 61, 0.45 }, { 62, 0.9 }, { 0, 0.4 } })
+        melody.push_back(note);
+    return melody;
+}();
+
 // A tune in E minor (natural minor) that dwells on E and B and ends each phrase on E.
 const std::vector<Note> tuneEminor {
     { 64, 0.4 }, { 67, 0.4 }, { 71, 0.6 }, { 69, 0.3 }, { 67, 0.3 }, { 66, 0.3 }, { 64, 0.9 }, { 0, 0.4 },
@@ -178,7 +188,7 @@ TEST_CASE("KeyEstimator waits, guesses, locks once confident, and holds the lock
     CHECK(e.requiredMargin == Approx(0.25 - 0.15 * (e.voicedSeconds - 2.0) / 8.0).margin(1e-9));
 
     // The whole tune: confident.
-    t = sing(estimator, twinkleD, t);
+    t = sing(estimator, twinkleDWithCadence, t);
     e = estimator.estimate();
     CHECK(e.state == lb::KeyEstimator::State::confident);
     CHECK(e.best == (lb::Key { 2, false }));
@@ -188,7 +198,7 @@ TEST_CASE("KeyEstimator waits, guesses, locks once confident, and holds the lock
     REQUIRE(locked == (lb::Key { 2, false }));
 
     // The singer moves a tone up for a long time: the shadow follows, the locked key stays.
-    std::vector<Note> higher = twinkleD;
+    std::vector<Note> higher = twinkleDWithCadence;
     for (auto& note : higher)
         if (note.midi > 0)
             note.midi += 2;
@@ -210,7 +220,7 @@ TEST_CASE("KeyEstimator locks by itself once the key is clear, and the margin it
     CHECK(estimator.requiredMargin(6.0) == Approx(0.175));
     CHECK(estimator.requiredMargin(30.0) == Approx(0.1));
 
-    sing(estimator, twinkleD);
+    sing(estimator, twinkleDWithCadence);
     const auto e = estimator.estimate();
     CHECK(e.state == lb::KeyEstimator::State::locked);
     CHECK(e.key == (lb::Key { 2, false }));

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Draws how the live key estimate improves with seconds of singing, for the synthetic
-test set and for vocadito: the share of clips whose best key is exact, and exact, relative
-or a fifth away, against seconds of voice, with the point where the estimator locks.
+"""Draws how the live key estimate improves with seconds of singing, one panel per test
+set: the share of clips whose best key is exact, and exact, relative or a fifth away,
+against seconds of voice, with the point where the estimator locks.
 
   python tools/python/plot_key_eval.py --analyzer <lb-analyze> \\
-      --labels testdata/external/keyset/labels.csv --vocadito testdata/external/vocadito \\
+      --labels testdata/external/keyset-holdout/labels.csv \\
+      --csd testdata/external/csd/CSD --vocadito testdata/external/vocadito \\
       --out docs/images/phase3/key-accuracy.png
 """
 
@@ -98,20 +99,29 @@ def draw(ax, title: str, exact, compatible, lock, clips: int) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--analyzer", type=Path, required=True)
-    parser.add_argument("--labels", type=Path, required=True)
-    parser.add_argument("--vocadito", type=Path, required=True)
+    parser.add_argument("--labels", type=Path, help="a synthetic set's labels.csv")
+    parser.add_argument("--csd", type=Path, help="the Children's Song Dataset (its test half is drawn)")
+    parser.add_argument("--vocadito", type=Path)
     parser.add_argument("--profile", default="temperley")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    with open(args.labels, newline="") as f:
-        synthetic = {Path(r["file"]).stem: (args.labels.parent / r["file"], eval_key.normalize(r["key"])) for r in csv.DictReader(f)}
-    references = eval_key.vocadito_references(args.vocadito)
-    vocadito = {clip: (args.vocadito / "Audio" / f"{clip}.wav", key) for clip, key in references.items()}
+    panels = []
+    if args.labels:
+        with open(args.labels, newline="") as f:
+            synthetic = {Path(r["file"]).stem: (args.labels.parent / r["file"], eval_key.normalize(r["key"])) for r in csv.DictReader(f)}
+        panels.append(("Synthetic singing: hymn and folk tunes", synthetic))
+    if args.csd:
+        panels.append(("Real singing: children's songs (CSD, test half)", eval_key.csd_references(args.csd, "test")))
+    if args.vocadito:
+        references = eval_key.vocadito_references(args.vocadito)
+        panels.append(("Real singing: vocadito", {clip: (args.vocadito / "Audio" / f"{clip}.wav", key) for clip, key in references.items()}))
+    if not panels:
+        parser.error("give at least one test set")
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), sharey=True, facecolor=SURFACE)
-    for ax, (title, clips) in zip(axes, (("Synthetic singing: hymn and folk tunes", synthetic),
-                                         ("Real singing: vocadito, reference keys by consensus", vocadito))):
+    fig, axes = plt.subplots(1, len(panels), figsize=(5.4 * len(panels), 4.8), sharey=True, facecolor=SURFACE, squeeze=False)
+    axes = axes[0]
+    for ax, (title, clips) in zip(axes, panels):
         exact, compatible, lock = curves(run(args.analyzer, clips, args.profile), clips)
         draw(ax, title, exact, compatible, lock, len(clips))
     axes[0].set_ylabel("clips whose best key is ...", color=INK_SECONDARY)

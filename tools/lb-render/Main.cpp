@@ -15,6 +15,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -44,6 +45,8 @@ void printUsage()
         "  --mute <layer>      leave a layer out, e.g. perc (may repeat)\n"
         "  --gain-db <x>       band volume (default 0)\n"
         "  --rate <hz>         sample rate (default 48000)\n"
+        "  --live              render at the app's live quality instead of sfizz's best offline\n"
+        "                      quality: to compare the parts' cost as the app pays it\n"
         "  --block <n>         block size (default 128)\n"
         "  --events <file>     also write every note as CSV: time_s,note,velocity,layer,on\n");
 }
@@ -67,6 +70,8 @@ struct Part
     juce::File sfz;
     std::unique_ptr<lb::SfizzInstrument> instrument;
     double sumSquares = 0.0;
+    double renderSeconds = 0.0; // time spent rendering, to compare the parts' cost
+    int maxVoices = 0;
 };
 
 bool parsePlan(const juce::String& text, const lb::Style& style, std::vector<Step>& plan, juce::String& error)
@@ -106,6 +111,7 @@ int main(int argc, char* argv[])
     float gainDb = 0.0f;
     int blockSize = 128;
     bool countIn = false;
+    bool live = false;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -139,6 +145,7 @@ int main(int argc, char* argv[])
         else if (arg == "--plan") planText = next();
         else if (arg == "--bpm") bpm = next().getDoubleValue();
         else if (arg == "--count-in") countIn = true;
+        else if (arg == "--live") live = true;
         else if (arg == "--mute") muted.add(next());
         else if (arg == "--gain-db") gainDb = next().getFloatValue();
         else if (arg == "--rate") rate = next().getDoubleValue();
@@ -186,7 +193,8 @@ int main(int argc, char* argv[])
             return 1;
         }
         part.instrument->prepare(rate, blockSize);
-        part.instrument->enableFreeWheeling();
+        if (!live)
+            part.instrument->enableFreeWheeling(); // the best resampling; the samples are all in RAM either way
     }
     // Layers go to the part of the same name, the rest to the drum kit.
     std::vector<int> route(style->layers.size(), 0);
@@ -295,7 +303,10 @@ int main(int argc, char* argv[])
         {
             if (part.instrument == nullptr)
                 continue;
+            const auto started = std::chrono::steady_clock::now();
             part.instrument->render(partBlock.getWritePointer(0), partBlock.getWritePointer(1), n);
+            part.renderSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+            part.maxVoices = std::max(part.maxVoices, part.instrument->activeVoices());
             partBlock.applyGain(0, n, gain);
             for (int ch = 0; ch < 2; ++ch)
             {
@@ -333,8 +344,10 @@ int main(int argc, char* argv[])
         std::printf("  %-8s %d notes\n", style->layers[i].c_str(), notesPerLayer[i]);
     for (const auto& part : parts)
         if (part.instrument != nullptr)
-            std::printf("  %-8s RMS %.1f dBFS over the whole file, before the limiter\n", part.name.c_str(),
-                        juce::Decibels::gainToDecibels(static_cast<float>(std::sqrt(part.sumSquares / (2.0 * mix.getNumSamples())))));
+            std::printf("  %-8s RMS %.1f dBFS over the whole file, before the limiter; rendering took %.2f%% of real time, "
+                        "at most %d voices\n", part.name.c_str(),
+                        juce::Decibels::gainToDecibels(static_cast<float>(std::sqrt(part.sumSquares / (2.0 * mix.getNumSamples())))),
+                        100.0 * part.renderSeconds / (mix.getNumSamples() / rate), part.maxVoices);
     if (player.playingKey().isValid())
         std::printf("  key      %s at the end\n", player.playingKey().name().c_str());
     if (player.sustainedNotes() != 0 || player.droppedEvents() != 0)

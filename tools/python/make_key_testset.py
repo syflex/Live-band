@@ -13,6 +13,12 @@ Both come with music21 (BSD licence; pip install music21). The clips and labels.
 testdata/external/keyset/, which is not committed. Then:
 
   python tools/python/eval_key.py --analyzer <lb-analyze> --labels testdata/external/keyset/labels.csv
+
+A held-out set, for checking settings chosen on the first one, uses other tunes and another
+seed:
+
+  python tools/python/make_key_testset.py --out testdata/external/keyset-holdout --seed 11 \
+      --exclude testdata/external/keyset/labels.csv
 """
 
 from __future__ import annotations
@@ -51,14 +57,17 @@ def melody_events(part) -> list[tuple[float, float, int | None]]:
     return sorted(events)
 
 
-def bach_items(rng: random.Random, count: int):
+def bach_items(rng: random.Random, count: int, exclude: set[str]):
     from music21 import corpus
 
     paths = sorted(str(p) for p in corpus.getComposer("bach") if str(p).endswith((".mxl", ".xml", ".krn")))
     rng.shuffle(paths)
+    used = set(exclude)  # some chorales come in two formats: take each once
     for path in paths:
         if count <= 0:
             return
+        if Path(path).stem in used:
+            continue
         try:
             score = corpus.parse(path)
             if len(score.parts) < 4:
@@ -77,10 +86,11 @@ def bach_items(rng: random.Random, count: int):
         if len(events) < 12:
             continue
         count -= 1
+        used.add(Path(path).stem)
         yield Path(path).stem, events, key.tonic.pitchClass, key.mode == "minor", (0.45, 0.75)
 
 
-def folk_items(rng: random.Random, count: int):
+def folk_items(rng: random.Random, count: int, exclude: set[str]):
     from music21 import corpus
 
     paths = sorted(str(p) for p in corpus.getComposer("ryansMammoth"))
@@ -88,6 +98,8 @@ def folk_items(rng: random.Random, count: int):
     for path in paths:
         if count <= 0:
             return
+        if f"ryan-{Path(path).stem}" in exclude:
+            continue
         try:
             parsed = corpus.parse(path)
             score = parsed.scores[0] if hasattr(parsed, "scores") else parsed
@@ -157,12 +169,18 @@ def main() -> int:
     parser.add_argument("--folk", type=int, default=100)
     parser.add_argument("--seconds", type=float, default=15.0)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--exclude", type=Path, action="append", default=[],
+                        help="labels.csv of another set whose tunes to leave out (may repeat)")
     args = parser.parse_args()
 
+    exclude = set()
+    for labels in args.exclude:
+        with open(labels, newline="") as f:
+            exclude |= {Path(row["file"]).stem.split("-", 1)[1] for row in csv.DictReader(f)}
     rng = random.Random(args.seed)
     args.out.mkdir(parents=True, exist_ok=True)
     rows = []
-    for source, items in (("hymn", bach_items(rng, args.hymns)), ("folk", folk_items(rng, args.folk))):
+    for source, items in (("hymn", bach_items(rng, args.hymns, exclude)), ("folk", folk_items(rng, args.folk, exclude))):
         for name, events, tonic, minor, quarter_range in items:
             transpose = rng.randint(-6, 5)
             pitches = [m for _, _, m in events if m is not None]

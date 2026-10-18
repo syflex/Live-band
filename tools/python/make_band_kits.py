@@ -70,30 +70,28 @@ fileg_sustain=15
 fileg_depth=2200
 """
 
+# The pad is the band's most expensive part on the audio thread (each held note is a voice of
+# detuned oscillators, and chords overlap while they release), so it is kept lean: three
+# saws, a release long enough to join the chords, and nothing below its own notes, which
+# leaves the low end to the bass and kick.
 WARM_PAD = HEADER.format(title="LiveBand warm pad: sfizz oscillators, no samples (AGPLv3, part of this repository).") + """
 <global>
 pitch_keycenter=60
 ampeg_attack=0.7
 ampeg_sustain=100
-ampeg_release=1.8
+ampeg_release=1.2
 lokey=0
 hikey=127
 
-// Five detuned saws, softened by a low-pass filter.
+// Three detuned saws, softened by a low-pass filter.
 <region>
 sample=*saw
-oscillator_multi=5
-oscillator_detune=16
+oscillator_multi=3
+oscillator_detune=18
 fil_type=lpf_2p
 cutoff=1100
 resonance=0.6
-volume=-22.5
-
-// A triangle an octave down for warmth.
-<region>
-sample=*triangle
-transpose=-12
-volume=-18.5
+volume=-16.5
 """
 
 

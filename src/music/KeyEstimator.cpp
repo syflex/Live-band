@@ -152,14 +152,14 @@ void NoteSegmenter::reset() noexcept
 void KeyEstimator::reset() noexcept
 {
     segmenter_.reset();
-    histogram_.fill(0.0);
+    storedCount_ = 0;
+    storedNext_ = 0;
+    phraseLastNote_ = -1;
     tuningX_ = tuningY_ = 0.0;
     lastFade_ = -1.0;
     voicedSeconds_ = 0.0;
     lastFrame_ = -1.0;
     notes_ = 0;
-    lastPitchClass_ = -1;
-    lastNoteWeight_ = 0.0;
     locked_ = false;
     lockedKey_ = {};
 }
@@ -174,13 +174,10 @@ void KeyEstimator::process(double seconds, bool voiced, double midi, float rmsDb
 
 void KeyEstimator::fadeTo(double seconds) noexcept
 {
+    // The notes fade by their age when the histogram is built; the tuning fades here.
     if (lastFade_ >= 0.0 && seconds > lastFade_)
     {
-        const double dt = seconds - lastFade_;
-        const double histogramFactor = std::exp(-dt / settings_.decaySeconds);
-        for (auto& weight : histogram_)
-            weight *= histogramFactor;
-        const double tuningFactor = std::exp(-dt / settings_.tuningDecaySeconds);
+        const double tuningFactor = std::exp(-(seconds - lastFade_) / settings_.tuningDecaySeconds);
         tuningX_ *= tuningFactor;
         tuningY_ *= tuningFactor;
     }
@@ -201,6 +198,20 @@ int KeyEstimator::pitchClassOf(double midi) const noexcept
     return (rounded % 12 + 12) % 12;
 }
 
+std::array<double, 12> KeyEstimator::histogram() const noexcept
+{
+    std::array<double, 12> histogram {};
+    const double tuning = tuningCents() / 100.0;
+    for (int i = 0; i < storedCount_; ++i)
+    {
+        const auto& note = stored_[static_cast<std::size_t>(i)];
+        const auto rounded = static_cast<long>(std::lround(note.midi - tuning));
+        const double age = std::max(lastFade_ - note.endSeconds, 0.0);
+        histogram[static_cast<std::size_t>((rounded % 12 + 12) % 12)] += note.weight * std::exp(-age / settings_.decaySeconds);
+    }
+    return histogram;
+}
+
 void KeyEstimator::addNote(const SungNote& note) noexcept
 {
     fadeTo(note.startSeconds + note.durationSeconds);
@@ -211,12 +222,11 @@ void KeyEstimator::addNote(const SungNote& note) noexcept
     tuningX_ += note.durationSeconds * std::cos(angle);
     tuningY_ += note.durationSeconds * std::sin(angle);
 
-    const int pitchClass = pitchClassOf(note.midi);
     const double loudness = 0.5 + 0.5 * std::clamp((static_cast<double>(note.rmsDb) + 50.0) / 30.0, 0.0, 1.0);
-    const double weight = note.durationSeconds * loudness;
-    histogram_[static_cast<std::size_t>(pitchClass)] += weight;
-    lastPitchClass_ = pitchClass;
-    lastNoteWeight_ = weight;
+    stored_[static_cast<std::size_t>(storedNext_)] = { note.startSeconds + note.durationSeconds, note.midi, note.durationSeconds * loudness };
+    phraseLastNote_ = storedNext_;
+    storedNext_ = (storedNext_ + 1) % maxStoredNotes;
+    storedCount_ = std::min(storedCount_ + 1, maxStoredNotes);
     ++notes_;
     if (settings_.autoLock && !locked_ && estimate().state == State::confident)
         lock();
@@ -224,10 +234,10 @@ void KeyEstimator::addNote(const SungNote& note) noexcept
 
 void KeyEstimator::addPhraseEnd() noexcept
 {
-    if (lastPitchClass_ < 0)
+    if (phraseLastNote_ < 0)
         return;
-    histogram_[static_cast<std::size_t>(lastPitchClass_)] += settings_.phraseFinalBonus * lastNoteWeight_;
-    lastPitchClass_ = -1; // once per phrase
+    stored_[static_cast<std::size_t>(phraseLastNote_)].weight *= 1.0 + settings_.phraseFinalBonus;
+    phraseLastNote_ = -1; // once per phrase
     if (settings_.autoLock && !locked_ && estimate().state == State::confident)
         lock();
 }
@@ -293,7 +303,7 @@ KeyEstimator::Estimate KeyEstimator::estimate() const noexcept
     e.voicedSeconds = voicedSeconds_;
     e.tuningCents = tuningCents();
     e.notes = notes_;
-    score(histogram_, settings_.profile, e.best, e.correlation, e.second, e.margin);
+    score(histogram(), settings_.profile, e.best, e.correlation, e.second, e.margin);
     e.requiredMargin = requiredMargin(voicedSeconds_);
     if (e.best.isValid())
     {

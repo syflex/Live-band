@@ -105,10 +105,14 @@ private:
 // Estimates the key of a sung melody as it goes.
 //
 // - Tuning: an unaccompanied singer is often 20-50 cents off A440, so notes are binned
-//   relative to a running circular mean of their deviation from the semitone grid.
-// - Histogram: each note adds its duration times a loudness weight to its pitch class; the
-//   last note of a phrase counts extra, because melodies tend to end on the tonic. Until the
-//   key locks, the histogram fades with a time constant of decaySeconds.
+//   relative to a running circular mean of their deviation from the semitone grid. The
+//   recent notes are kept and binned again with the latest tuning, so the first notes do not
+//   stay in the wrong bins while the tuning is still uncertain.
+// - Histogram: each note adds its duration times a loudness weight to its pitch class. It
+//   fades with a time constant of decaySeconds, so the shadow estimate of a locked key can
+//   follow a change. An extra weight for the last note of each phrase (phraseFinalBonus) is
+//   off by default: early phrases often end on the dominant, and the bonus then pulls the
+//   estimate a fifth up.
 // - Score: the Pearson correlation of the histogram with the 24 rotated profiles.
 // - Decision: nothing before minVoiceSeconds of voice; then the best key as a guess, which
 //   becomes confident when its correlation leads the second key's by the required margin.
@@ -127,7 +131,7 @@ public:
     {
         KeyProfile profile = KeyProfile::temperleyKostkaPayne;
         double decaySeconds = 30.0;
-        double phraseFinalBonus = 1.0; // extra weight for a phrase's last note, times its own
+        double phraseFinalBonus = 0.0; // extra weight for a phrase's last note, times its own
         double minVoiceSeconds = 2.0;
         double lockMarginStart = 0.25;
         double lockMarginEnd = 0.1;
@@ -182,7 +186,7 @@ public:
 
     Estimate estimate() const noexcept;
     double requiredMargin(double voicedSeconds) const noexcept;
-    const std::array<double, 12>& histogram() const noexcept { return histogram_; }
+    std::array<double, 12> histogram() const noexcept;
     double tuningCents() const noexcept;
     int pitchClassOf(double midi) const noexcept;
 
@@ -191,18 +195,30 @@ public:
                       double& secondR) noexcept;
 
 private:
+    struct StoredNote
+    {
+        double endSeconds = 0.0;
+        double midi = 0.0;
+        double weight = 0.0;
+    };
+
     void fadeTo(double seconds) noexcept;
 
     Settings settings_;
     NoteSegmenter segmenter_;
-    std::array<double, 12> histogram_ {};
+
+    // The recent notes, binned again for each estimate. At 30 s of decay, notes that drop
+    // out of the ring weigh almost nothing.
+    static constexpr int maxStoredNotes = 512;
+    std::array<StoredNote, maxStoredNotes> stored_ {};
+    int storedCount_ = 0;
+    int storedNext_ = 0;
+    int phraseLastNote_ = -1; // the latest note of the phrase being sung, if any
     double tuningX_ = 0.0, tuningY_ = 0.0; // sum of weighted unit vectors of the deviation
     double lastFade_ = -1.0;
     double voicedSeconds_ = 0.0;
     double lastFrame_ = -1.0;
     int notes_ = 0;
-    int lastPitchClass_ = -1;
-    double lastNoteWeight_ = 0.0;
     bool locked_ = false;
     Key lockedKey_;
 };

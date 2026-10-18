@@ -5,22 +5,16 @@
 pitch_keycenter=60
 ampeg_attack=0.7
 ampeg_sustain=100
-ampeg_release=1.8
+ampeg_release=1.2
 lokey=0
 hikey=127
 
-// Five detuned saws, softened by a low-pass filter.
+// Three detuned saws, softened by a low-pass filter.
 <region>
 sample=*saw
-oscillator_multi=5
-oscillator_detune=16
+oscillator_multi=3
+oscillator_detune=18
 fil_type=lpf_2p
 cutoff=1100
 resonance=0.6
-volume=-22.5
-
-// A triangle an octave down for warmth.
-<region>
-sample=*triangle
-transpose=-12
-volume=-18.5
+volume=-16.5

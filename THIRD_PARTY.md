@@ -57,7 +57,8 @@ Checked against each project's licence file in the pinned checkout.
 | Dataset | Licence | Use |
 |---|---|---|
 | [vocadito](https://doi.org/10.5281/zenodo.5578807) (Bittner, Pasalo, Bosch, Meseguer Brocal and Rubinstein, 2021) | CC BY 4.0 | Scoring pitch, onset and key detection. Fetched by `tools/python/fetch_vocadito.py` into `testdata/external/`. |
-| Bach chorales and Ryan's Mammoth Collection (1883), from the music21 corpus | The music is in the public domain; the encodings come with music21 | Melodies for the synthetic key test set, sung by `tools/python/make_key_testset.py` into `testdata/external/keyset/`. Generated locally, not committed. |
+| [Children's Song Dataset](https://doi.org/10.5281/zenodo.4916302) (Choi, Kim, Park, Yong and Nam, 2020) | CC BY-NC-SA 4.0 | Scoring key detection on real singing. Fetched by `tools/python/fetch_csd.py` into `testdata/external/`. Non-commercial, so it is used only for evaluation, never built into the app or committed. |
+| Bach chorales and Ryan's Mammoth Collection (1883), from the music21 corpus | The music is in the public domain; the encodings come with music21 | Melodies for the synthetic key test set, sung by `tools/python/make_key_testset.py` into `testdata/external/keyset/` (and a held-out set of other tunes into `keyset-holdout/`). Generated locally, not committed. |
 
 ## Sound assets
 

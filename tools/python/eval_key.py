@@ -18,13 +18,17 @@ Reference keys come from either:
   --vocadito <folder>     vocadito, which has no key labels: the reference is the key that
                           at least three of the four profiles (music21's implementations)
                           give for the whole hand-annotated melody; other clips are skipped
+  --csd <folder>          the Children's Song Dataset (fetch_csd.py): 100 children's songs,
+                          each sung in two keys, with every note annotated; the reference is
+                          found the same way. --split dev or test takes half of the songs
+                          (odd or even song numbers; both keys of a song stay together)
 
   python tools/python/eval_key.py --analyzer <lb-analyze> --labels testdata/external/keyset/labels.csv
 
 With --check it fails if, for any profile, the estimator's own lock falls below a floor:
 locked on at least 65% of the clips, and exact, relative or a fifth away on at least 75% of
 those. These floors guard against regressions; they sit a little below what the shipped
-settings reach on vocadito (75% and 83%).
+settings reach on vocadito (79% and 84%).
 """
 
 from __future__ import annotations
@@ -143,12 +147,47 @@ def vocadito_references(folder: Path) -> dict[str, str]:
     return references
 
 
+def consensus_key(pitches, durations) -> tuple[str | None, int]:
+    """The key that most of music21's four profiles give for a melody, and how many agree."""
+    from music21 import analysis, note, stream
+
+    analyzers = [analysis.discrete.KrumhanslKessler(), analysis.discrete.AardenEssen(),
+                 analysis.discrete.TemperleyKostkaPayne(), analysis.discrete.BellmanBudge()]
+    s = stream.Stream()
+    for m, duration in zip(pitches, durations):
+        if duration > 0:
+            s.append(note.Note(int(m), quarterLength=max(0.01, round(float(duration), 2))))
+    votes = Counter()
+    for a in analyzers:
+        k = a.getSolution(s)
+        votes[normalize(f"{k.tonic.name.replace('-', 'b')} {k.mode}")] += 1
+    best, count = votes.most_common(1)[0]
+    return best, count
+
+
+def csd_references(folder: Path, split: str) -> dict[str, tuple[Path, str]]:
+    clips = {}
+    for csv_path in sorted(folder.glob("*/csv/*.csv")):
+        clip = csv_path.stem  # en001a: song 1, first key
+        song = int(clip[2:5])
+        if split == "dev" and song % 2 == 0 or split == "test" and song % 2 == 1:
+            continue
+        with open(csv_path, newline="") as f:
+            rows = list(csv.DictReader(f))
+        key, votes = consensus_key([int(r["pitch"]) for r in rows], [float(r["end"]) - float(r["start"]) for r in rows])
+        if votes >= 3:
+            clips[clip] = (csv_path.parent.parent / "wav" / f"{clip}.wav", key)
+    return clips
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--analyzer", type=Path, required=True)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--labels", type=Path)
     source.add_argument("--vocadito", type=Path)
+    source.add_argument("--csd", type=Path)
+    parser.add_argument("--split", choices=["dev", "test", "all"], default="all", help="with --csd: which songs")
     parser.add_argument("--audio-dir", type=Path)
     parser.add_argument("--profiles", default=",".join(PROFILES))
     parser.add_argument("--extra", default="", help="more lb-analyze options, e.g. \"--phrase-bonus 2\"")
@@ -163,6 +202,12 @@ def main() -> int:
             labelled = {row["file"]: normalize(row["key"]) for row in csv.DictReader(f)}
         clips = {Path(name).stem: (audio_dir / name, key) for name, key in labelled.items()}
         groups = {Path(name).stem: name.split("-")[0] for name in labelled}
+    elif args.csd:
+        clips = csd_references(args.csd, args.split)
+        total = len([p for p in args.csd.glob("*/csv/*.csv")
+                     if args.split == "all" or (int(p.stem[2:5]) % 2 == 1) == (args.split == "dev")])
+        print(f"CSD ({args.split}): {len(clips)} of {total} recordings have a reference key that three or four profiles agree on")
+        groups = {clip: "english" if clip.startswith("en") else "korean" for clip in clips}
     else:
         references = vocadito_references(args.vocadito)
         total = len(list((args.vocadito / "Audio").glob("*.wav")))

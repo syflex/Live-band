@@ -48,9 +48,11 @@ void printUsage()
         "  --lock-margin <a> <b>    correlation lead needed to lock: a at 2 s of voice, b from\n"
         "                           10 s on (default 0.25 0.1)\n"
         "  --key-decay <seconds>    time constant of the pitch-class histogram (default 30)\n"
-        "  --phrase-bonus <x>       extra weight of a phrase's last note (default 1)\n"
+        "  --phrase-bonus <x>       extra weight of a phrase's last note (default 0)\n"
         "  --note-tolerance <st>    pitch range of a held note around its mean (default 0.5)\n"
         "  --min-note <seconds>     shortest note the key estimator counts (default 0.08)\n"
+
+
         "  --quiet                  print nothing but errors\n");
 }
 
@@ -156,6 +158,7 @@ int main(int argc, char* argv[])
         {
             keySettings.notes.minNoteSeconds = std::stod(argv[++i]);
         }
+
         else if (!arg.empty() && arg[0] == '-')
         {
             std::fprintf(stderr, "unknown option or missing value: %s\n", arg.c_str());

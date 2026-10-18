@@ -127,9 +127,12 @@ double tuningError(const char* sfzPath, int note, double expected)
         double re = 0.0, im = 0.0;
         for (std::size_t i = out.left.size() / 2; i < out.left.size(); ++i)
         {
+            // Both channels together: the pad's detuned oscillators are spread across the
+            // stereo field, so one channel alone leans sharp or flat.
+            const double mono = 0.5 * (out.left[i] + out.right[i]);
             const double phase = 2.0 * std::numbers::pi * f * static_cast<double>(i) / sampleRate;
-            re += out.left[i] * std::cos(phase);
-            im += out.left[i] * std::sin(phase);
+            re += mono * std::cos(phase);
+            im += mono * std::sin(phase);
         }
         if (re * re + im * im > bestPower)
         {
@@ -143,8 +146,8 @@ double tuningError(const char* sfzPath, int note, double expected)
 
 TEST_CASE("The band's pitched instruments play in tune")
 {
-    // A2 on the bass, A3 on the pad, in the middle of their ranges. (The pad's octave-down
-    // triangle makes a pitch tracker hear it an octave off, so the test looks at the spectrum.)
+    // A2 on the bass, A3 on the pad, in the middle of their ranges. (The pad's detuned
+    // oscillators confuse a pitch tracker, so the test looks at the spectrum.)
     CHECK(std::abs(tuningError(LB_ASSETS_DIR "/sfz/bass/synth-bass.sfz", 45, 110.0)) <= 5.0);
     CHECK(std::abs(tuningError(LB_ASSETS_DIR "/sfz/pad/warm-pad.sfz", 57, 220.0)) <= 5.0);
 
