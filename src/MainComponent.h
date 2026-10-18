@@ -14,8 +14,9 @@
 #include <vector>
 
 // The app window: audio settings, the band (start by tapping, sections, fills, levels, beat
-// lights), voice input (mic or a file), the live note and pitch view, session recording with
-// an optional click, the latency test, a test instrument, and live diagnostics.
+// lights, the key it follows and the overrides), voice input (mic or a file), the live note
+// and pitch view, session recording with an optional click, the latency test, a test
+// instrument, and live diagnostics.
 class MainComponent final : public juce::Component,
                             public juce::FileDragAndDropTarget,
                             private juce::Timer,
@@ -67,6 +68,7 @@ private:
     void loadBand();
     void updateBand();
     juce::String bandStatusText(const lb::AudioEngine::BandStatus& status) const;
+    juce::String keyStatusText(const lb::AudioEngine::BandStatus& status) const;
     bool pressBandKey(BandKey& key);
     void enableMidiInputs();
     void applyLatencyCompensation();
@@ -118,9 +120,20 @@ private:
     juce::TextButton fillButton_ { "Fill" };
     juce::ToggleButton drumsToggle_ { "Drums" };
     juce::ToggleButton percToggle_ { "Perc" };
+    juce::ToggleButton bassToggle_ { "Bass" };
+    juce::ToggleButton keysToggle_ { "Keys" };
+    juce::ToggleButton padToggle_ { "Pad" };
     juce::Label bandGainLabel_ { {}, "Band volume" };
     juce::Slider bandGainSlider_;
     BeatLamps beatLamps_;
+
+    // Key.
+    juce::Label keyLabel_ { {}, "Key:" };
+    juce::Label keyStatus_;
+    juce::TextButton lockButton_ { "Lock" };
+    juce::TextButton keyDownButton_ { "-1" };
+    juce::TextButton keyUpButton_ { "+1" };
+    juce::TextButton relativeButton_ { "Relative" };
 
     // Row 2: voice input.
     juce::Label voiceLabel_ { {}, "Voice:" };
@@ -173,12 +186,17 @@ private:
     // Band state (message thread).
     juce::String bandProblem_;
     int missingKitSamples_ = 0;
+    int missingPianoSamples_ = 0;
     std::deque<lb::BeatTick> pendingTicks_; // sent to the output, not heard yet
     std::optional<lb::BeatTick> heardTick_;
     BandKey spaceKey_ { juce::KeyPress::spaceKey };
     BandKey returnKey_ { juce::KeyPress::returnKey };
     BandKey nextKey_ { 'n' };
     BandKey fillKey_ { 'f' };
+    BandKey lockKey_ { 'k' };
+    BandKey relativeKey_ { 'm' };
+    BandKey upKey_ { juce::KeyPress::upKey };
+    BandKey downKey_ { juce::KeyPress::downKey };
     int ticksUntilMidiScan_ = 0;
 
     std::array<bool, testKeys.size()> testKeyDown_ {};

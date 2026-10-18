@@ -5,4 +5,5 @@ scipy
 soundfile
 librosa
 mir_eval
-matplotlib  # only for plot_results.py
+matplotlib  # only for plot_results.py and plot_groove.py
+music21     # only for the key evaluation (make_key_testset.py, eval_key.py --vocadito)

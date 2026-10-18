@@ -33,6 +33,14 @@ double Style::foldTempo(double bpm) const noexcept
     return std::clamp(best, minBpm, maxBpm);
 }
 
+int Style::layerIndex(const std::string& name) const noexcept
+{
+    for (std::size_t i = 0; i < layers.size(); ++i)
+        if (layers[i] == name)
+            return static_cast<int>(i);
+    return -1;
+}
+
 std::string Style::validate() const
 {
     if (beatsPerBar < 1 || beatsPerBar > 16)
@@ -68,9 +76,24 @@ std::string Style::validate() const
             return section.name + ": the fill must be one bar long";
         if (auto error = checkNotes(section.main.notes, section.main.lengthBeats, section.name); !error.empty())
             return error;
+        if (!section.mainMinor.notes.empty())
+        {
+            if (section.mainMinor.lengthBeats != section.main.lengthBeats)
+                return section.name + ": the minor pattern must be as long as the major one";
+            if (auto error = checkNotes(section.mainMinor.notes, section.mainMinor.lengthBeats, section.name + " minor"); !error.empty())
+                return error;
+        }
         if (auto error = checkNotes(section.fill.notes, section.fill.lengthBeats, section.name + " fill"); !error.empty())
             return error;
     }
+    if (layers.size() > 16)
+        return "a style has at most 16 layers";
+    for (const auto* stages : { &entryKeyKnown, &entryKeyUnknown })
+        for (const auto& stage : *stages)
+            if (stage.bar < 0 || (stage.layers & ~allLayers()) != 0)
+                return "a staged entry names an unknown layer or a negative bar";
+    if (afterKeyLockEveryBars < 1)
+        return "afterKeyLock needs everyBars of at least 1";
     for (const auto* hits : { &countIn, &entry, &ending })
         if (auto error = checkNotes(*hits, beatsPerBar, "count-in, entry or ending"); !error.empty())
             return error;

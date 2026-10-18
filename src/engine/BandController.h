@@ -1,6 +1,8 @@
 #pragma once
 
+#include "audio/AnalysisFrame.h"
 #include "engine/AudioEngine.h"
+#include "music/KeyEstimator.h"
 #include "music/TapTempo.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -15,6 +17,14 @@ namespace lb
 // taps predict, with the output latency taken off so that the downbeat is heard when the
 // fifth tap lands. Tapping while the band plays (four taps or more) pulls it onto the
 // tapped tempo and beat, gradually.
+//
+// Key: the controller listens to the singer through the analysis frames, and the key the
+// estimator locks goes to the band, which changes key on its next downbeat. A band started
+// before that plays the drums alone and brings the harmony in once the key is known; a band
+// started after it comes in with the style's staged entry. By hand: lock the current guess,
+// or listen afresh (the band keeps its key until the new one locks); move the key a semitone;
+// swap major and its relative minor. Once the band has stopped, the estimator listens afresh
+// for the next song.
 //
 // MIDI: any note-on, or the sustain pedal (CC 64) or CC 80 going down, is a tap; CC 81
 // starts and stops, CC 82 goes to the next section, CC 83 plays a fill.
@@ -56,11 +66,28 @@ public:
     // Call after AudioEngine::setStyle(): the start tempo becomes the style's.
     void styleChanged();
 
+    // Key. analysisFrame() takes each frame from AudioEngine::popAnalysisFrame(); update()
+    // is called regularly (the UI timer) to notice the band stopping.
+    void analysisFrame(const AnalysisFrame& frame);
+    void update();
+    KeyEstimator::Estimate keyEstimate() const noexcept { return keys_.estimate(); }
+    Key bandKey() const noexcept { return sentKey_; } // the last key given to the band
+    void lockOrRelisten();         // lock the current guess, or, when locked, listen afresh
+    void shiftKey(int semitones);  // the current key or guess, moved, and locked
+    void toggleRelativeKey();      // C major <-> A minor, locked
+    void setKey(const Key& key);   // a key by hand, locked
+    void setKeySettings(const KeyEstimator::Settings& settings) { keys_.setSettings(settings); }
+
 private:
     double samplesPerBeat(double bpm) const;
+    Key currentKey() const noexcept; // the locked key, or the best guess, or none
+    void sendKeyIfLocked();
 
     AudioEngine& engine_;
     TapTempo taps_;
+    KeyEstimator keys_;
+    Key sentKey_;
+    BandState lastState_ = BandState::stopped;
     double bpm_ = 100.0;
     bool pedalDown_ = false;
 };

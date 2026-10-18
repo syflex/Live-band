@@ -3,9 +3,12 @@
 //
 //   lb-analyze [options] <audio file>...
 //
-// For each input, writes <name>.frames.csv (one row per 8 ms frame) and <name>.onsets.csv.
+// For each input, writes <name>.frames.csv (one row per 8 ms frame), <name>.onsets.csv,
+// <name>.notes.csv (the sung notes the key estimator uses) and <name>.key.csv (the key
+// estimate every 0.1 s).
 
 #include "audio/VocalAnalyzer.h"
+#include "music/KeyEstimator.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
@@ -24,7 +27,7 @@ void printUsage()
     std::puts(
         "usage: lb-analyze [options] <audio file>...\n"
         "\n"
-        "Writes <name>.frames.csv and <name>.onsets.csv for each input.\n"
+        "Writes <name>.frames.csv, .onsets.csv, .notes.csv and .key.csv for each input.\n"
         "\n"
         "options:\n"
         "  --out-dir <dir>          output folder (default: next to each input)\n"
@@ -40,6 +43,16 @@ void printUsage()
         "  --note-change <st>       pitch change that counts as a new note (default 0.8)\n"
         "  --note-frames <n>        frames a change must last (default 4)\n"
         "  --min-ioi <seconds>      minimum time between onsets (default 0.08)\n"
+        "  --key-profile <name>     krumhansl-kessler, aarden-essen, temperley or bellman-budge\n"
+        "                           (default temperley)\n"
+        "  --lock-margin <a> <b>    correlation lead needed to lock: a at 2 s of voice, b from\n"
+        "                           10 s on (default 0.25 0.1)\n"
+        "  --key-decay <seconds>    time constant of the pitch-class histogram (default 30)\n"
+        "  --phrase-bonus <x>       extra weight of a phrase's last note (default 0)\n"
+        "  --note-tolerance <st>    pitch range of a held note around its mean (default 0.5)\n"
+        "  --min-note <seconds>     shortest note the key estimator counts (default 0.08)\n"
+
+
         "  --quiet                  print nothing but errors\n");
 }
 
@@ -70,6 +83,7 @@ bool readMono(const juce::File& file, std::vector<float>& samples, double& sampl
 int main(int argc, char* argv[])
 {
     lb::VocalAnalyzer::Settings settings;
+    lb::KeyEstimator::Settings keySettings;
     juce::File outDir;
     bool quiet = false;
     std::vector<juce::File> inputs;
@@ -115,6 +129,36 @@ int main(int argc, char* argv[])
         {
             settings.onsets.minInterOnsetSeconds = std::stod(argv[++i]);
         }
+        else if (arg == "--key-profile" && hasValue)
+        {
+            if (!lb::profileFromName(argv[++i], keySettings.profile))
+            {
+                std::fprintf(stderr, "unknown key profile: %s\n", argv[i]);
+                return 2;
+            }
+        }
+        else if (arg == "--lock-margin" && i + 2 < argc)
+        {
+            keySettings.lockMarginStart = std::stod(argv[++i]);
+            keySettings.lockMarginEnd = std::stod(argv[++i]);
+        }
+        else if (arg == "--key-decay" && hasValue)
+        {
+            keySettings.decaySeconds = std::stod(argv[++i]);
+        }
+        else if (arg == "--phrase-bonus" && hasValue)
+        {
+            keySettings.phraseFinalBonus = std::stod(argv[++i]);
+        }
+        else if (arg == "--note-tolerance" && hasValue)
+        {
+            keySettings.notes.toleranceSemitones = std::stod(argv[++i]);
+        }
+        else if (arg == "--min-note" && hasValue)
+        {
+            keySettings.notes.minNoteSeconds = std::stod(argv[++i]);
+        }
+
         else if (!arg.empty() && arg[0] == '-')
         {
             std::fprintf(stderr, "unknown option or missing value: %s\n", arg.c_str());
@@ -170,7 +214,9 @@ int main(int argc, char* argv[])
 
         std::ofstream framesCsv(base + ".frames.csv");
         std::ofstream onsetsCsv(base + ".onsets.csv");
-        if (!framesCsv || !onsetsCsv)
+        std::ofstream notesCsv(base + ".notes.csv");
+        std::ofstream keyCsv(base + ".key.csv");
+        if (!framesCsv || !onsetsCsv || !notesCsv || !keyCsv)
         {
             std::fprintf(stderr, "cannot write results for %s\n", input.getFullPathName().toRawUTF8());
             ++failures;
@@ -195,13 +241,45 @@ int main(int argc, char* argv[])
             }
         }
 
+        // The key, as the app would estimate it while listening. Keys are written as 0..11 for
+        // C..B major and 12..23 for C..B minor; -1 means none.
+        lb::KeyEstimator keys;
+        keys.setSettings(keySettings);
+        lb::NoteSegmenter segmenter;
+        segmenter.setSettings(keySettings.notes);
+        notesCsv << "start_s,duration_s,midi,rms_db,pitch_class\n" << std::fixed;
+        keyCsv << "time_s,voiced_s,notes,tuning_cents,state,key,best,second,correlation,margin\n" << std::fixed;
+        double nextKeyRow = 0.0;
+        lb::KeyEstimator::Estimate keyEstimate;
+        for (const auto& f : frames)
+        {
+            const double t = static_cast<double>(f.sampleTime) / rate;
+            keys.process(t, f.isVoiced(), f.midiPitch, f.rmsDb);
+            segmenter.process(t, f.isVoiced(), f.midiPitch, f.rmsDb,
+                [&](const lb::SungNote& n) {
+                    notesCsv << std::setprecision(4) << n.startSeconds << ',' << n.durationSeconds << ',' << std::setprecision(3) << n.midi << ','
+                             << n.rmsDb << ',' << keys.pitchClassOf(n.midi) << '\n';
+                },
+                [] {});
+            if (t >= nextKeyRow)
+            {
+                nextKeyRow += 0.1;
+                keyEstimate = keys.estimate();
+                keyCsv << std::setprecision(2) << t << ',' << keyEstimate.voicedSeconds << ',' << keyEstimate.notes << ',' << std::setprecision(1)
+                       << keyEstimate.tuningCents << ',' << static_cast<int>(keyEstimate.state) << ',' << keyEstimate.key.index() << ','
+                       << keyEstimate.best.index() << ',' << keyEstimate.second.index() << ',' << std::setprecision(4) << keyEstimate.correlation << ','
+                       << keyEstimate.margin << '\n';
+            }
+        }
+        keyEstimate = keys.estimate();
+
         if (!quiet)
         {
             const double duration = static_cast<double>(samples.size()) / rate;
-            std::printf("%s: %.1f s at %.0f Hz, %zu frames, %.0f%% voiced, %d onsets, %.0fx real time\n",
+            std::printf("%s: %.1f s at %.0f Hz, %zu frames, %.0f%% voiced, %d onsets, %.0fx real time, key %s\n",
                         input.getFileName().toRawUTF8(), duration, rate, frames.size(),
                         frames.empty() ? 0.0 : 100.0 * voiced / static_cast<double>(frames.size()), onsets,
-                        seconds > 0.0 ? duration / seconds : 0.0);
+                        seconds > 0.0 ? duration / seconds : 0.0, keyEstimate.best.name().c_str());
         }
     }
 

@@ -1,0 +1,62 @@
+{
+  "description": "VCSL samples used by piano.sfz. Downloaded by tools/python/fetch_assets.py.",
+  "licence": "CC0 1.0 (Versilian Community Sample Library, https://github.com/sgossner/VCSL)",
+  "base_url": "https://raw.githubusercontent.com/sgossner/VCSL/dfcf4a4918771eee884b96ad4493de82ef84daf6/",
+  "files": {
+    "vcsl/piano/GPiano_sus_A#2_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_A#2_v3_rr1_Player.wav",
+      "sha256": "98b5f4f241e200457c57457a3752380f76949c53cffbf19f43cca3cd629a45f1",
+      "bytes": 4722104
+    },
+    "vcsl/piano/GPiano_sus_A#3_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_A#3_v3_rr1_Player.wav",
+      "sha256": "2148d254dc414ff1ca7f31519aa1caf9205c8fcdf32e962953ac8bd99f89c6ab",
+      "bytes": 3667336
+    },
+    "vcsl/piano/GPiano_sus_A#4_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_A#4_v3_rr1_Player.wav",
+      "sha256": "67e919e7cca87fa9dcf8756b56d4c0b15f8023a9a0ceaaa640c9063016047af3",
+      "bytes": 2441832
+    },
+    "vcsl/piano/GPiano_sus_A1_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_A1_v3_rr1_Player.wav",
+      "sha256": "cf7e30be0e31707723e471d306947ae1ae42adcec2c78dcf36f1c28178be0b7c",
+      "bytes": 5869676
+    },
+    "vcsl/piano/GPiano_sus_D#5_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_D#5_v3_rr1_Player.wav",
+      "sha256": "0ea2acab4d0893b2bb5744814fa1ade064188221f9f85cdceedc28f02c4c94bb",
+      "bytes": 750960
+    },
+    "vcsl/piano/GPiano_sus_D2_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_D2_v3_rr1_Player.wav",
+      "sha256": "2ea71684722787ed958e5449e742289f3aa7b6e4ebe6938c3b54efb07d3acc85",
+      "bytes": 4806100
+    },
+    "vcsl/piano/GPiano_sus_D3_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_D3_v3_rr1_Player.wav",
+      "sha256": "ae308ead0da0713400e388d87949091c79189a1318c9b99ef437e563f9bba1e5",
+      "bytes": 4395364
+    },
+    "vcsl/piano/GPiano_sus_D4_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_D4_v3_rr1_Player.wav",
+      "sha256": "5dfc7dc6ad859e5c593c9726f803c96e98f8fb33f2e4ca2691f66d3aa213a8ac",
+      "bytes": 2888148
+    },
+    "vcsl/piano/GPiano_sus_F#2_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_F#2_v3_rr1_Player.wav",
+      "sha256": "05eb81ba1f540dc7735e4ccb5ddacebeacb4acf4eb088176962db97246f30bac",
+      "bytes": 4257708
+    },
+    "vcsl/piano/GPiano_sus_F#3_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_F#3_v3_rr1_Player.wav",
+      "sha256": "bd82fc521e035f1f50410968a6f753bf91fe2c629ea061ec9db4a0ce45430de5",
+      "bytes": 4119036
+    },
+    "vcsl/piano/GPiano_sus_F#4_v3_rr1_Player.wav": {
+      "source": "Chordophones/Zithers/Grand Piano, Kawai/Sustains/GPiano_sus_F#4_v3_rr1_Player.wav",
+      "sha256": "d46018561d9a4f3cb3511e024de5c6b6a0b03a720796e6e85b190e33b6541e3e",
+      "bytes": 2276132
+    }
+  }
+}

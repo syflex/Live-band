@@ -13,6 +13,18 @@
   "swing": 0.54,
   "layers": [
     "drums",
+    "perc",
+    "bass",
+    "keys",
+    "pad"
+  ],
+  "pitchedLayers": [
+    "bass",
+    "keys",
+    "pad"
+  ],
+  "fillLayers": [
+    "drums",
     "perc"
   ],
   "countIn": [
@@ -51,18 +63,103 @@
     {
       "note": 49,
       "velocity": 112
+    },
+    {
+      "note": 36,
+      "velocity": 110,
+      "layer": "bass",
+      "length": 2
+    },
+    {
+      "note": 55,
+      "velocity": 96,
+      "layer": "keys",
+      "length": 2
+    },
+    {
+      "note": 60,
+      "velocity": 96,
+      "layer": "keys",
+      "length": 2
+    },
+    {
+      "note": 67,
+      "velocity": 96,
+      "layer": "keys",
+      "length": 2
+    },
+    {
+      "note": 48,
+      "velocity": 84,
+      "layer": "pad",
+      "length": 3
+    },
+    {
+      "note": 55,
+      "velocity": 84,
+      "layer": "pad",
+      "length": 3
+    },
+    {
+      "note": 60,
+      "velocity": 84,
+      "layer": "pad",
+      "length": 3
     }
   ],
   "sections": [
     {
       "name": "Verse",
       "pattern": "verse.mid",
+      "patternMinor": "verse-minor.mid",
       "fill": "fill-verse.mid"
     },
     {
       "name": "Chorus",
       "pattern": "chorus.mid",
+      "patternMinor": "chorus-minor.mid",
       "fill": "fill-chorus.mid"
     }
-  ]
+  ],
+  "stagedEntry": {
+    "keyKnown": [
+      {
+        "bar": 0,
+        "layers": [
+          "pad",
+          "keys"
+        ]
+      },
+      {
+        "bar": 4,
+        "layers": [
+          "drums",
+          "perc"
+        ]
+      },
+      {
+        "bar": 8,
+        "layers": [
+          "bass"
+        ]
+      }
+    ],
+    "keyUnknown": [
+      {
+        "bar": 0,
+        "layers": [
+          "drums",
+          "perc"
+        ]
+      }
+    ],
+    "afterKeyLock": {
+      "layers": [
+        "bass",
+        "keys",
+        "pad"
+      ],
+      "everyBars": 4
+    }
+  }
 }

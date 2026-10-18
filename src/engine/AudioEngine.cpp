@@ -31,10 +31,31 @@ bool AudioEngine::loadInstrument(const juce::File& sfzFile)
     return ok;
 }
 
-bool AudioEngine::loadDrumKit(const juce::File& sfzFile)
+const char* AudioEngine::partName(BandPart part) noexcept
 {
-    const bool ok = drumKit_.load(sfzFile.getFullPathName().toStdString());
-    drumKitName_ = ok ? sfzFile.getFileNameWithoutExtension() : juce::String();
+    switch (part)
+    {
+        case BandPart::drums: return "drums";
+        case BandPart::bass:  return "bass";
+        case BandPart::keys:  return "keys";
+        case BandPart::pad:   return "pad";
+    }
+    return "";
+}
+
+AudioEngine::BandPart AudioEngine::partForLayer(const std::string& layerName) noexcept
+{
+    for (const auto part : { BandPart::bass, BandPart::keys, BandPart::pad })
+        if (layerName == partName(part))
+            return part;
+    return BandPart::drums;
+}
+
+bool AudioEngine::loadBandInstrument(BandPart part, const juce::File& sfzFile)
+{
+    auto& p = parts_[static_cast<std::size_t>(part)];
+    const bool ok = p.instrument.load(sfzFile.getFullPathName().toStdString());
+    p.name = ok ? sfzFile.getFileNameWithoutExtension() : juce::String();
     return ok;
 }
 
@@ -46,10 +67,13 @@ void AudioEngine::setStyle(std::unique_ptr<Style> style)
     Command command;
     command.type = Command::Type::setStyle;
     command.style = style_;
+    if (style_ != nullptr)
+        for (std::size_t i = 0; i < style_->layers.size() && i < command.routes.size(); ++i)
+            command.routes[i] = partForLayer(style_->layers[i]);
     pushCommand(command);
 }
 
-void AudioEngine::startBand(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars) noexcept
+void AudioEngine::startBand(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars, Key key) noexcept
 {
     Command command;
     command.type = Command::Type::startBand;
@@ -57,6 +81,15 @@ void AudioEngine::startBand(std::int64_t downbeatSample, double samplesPerBeat, 
     command.samplesPerBeat = samplesPerBeat;
     command.section = section;
     command.countInBars = countInBars;
+    command.keyIndex = static_cast<std::int8_t>(key.index());
+    pushCommand(command);
+}
+
+void AudioEngine::setBandKey(const Key& key) noexcept
+{
+    Command command;
+    command.type = Command::Type::setBandKey;
+    command.keyIndex = static_cast<std::int8_t>(key.index());
     pushCommand(command);
 }
 
@@ -115,6 +148,8 @@ AudioEngine::BandStatus AudioEngine::bandStatus() const noexcept
     status.pendingSection = bandPendingSection_.load();
     status.fillScheduled = bandFillScheduled_.load();
     status.samplesPerBeat = bandSamplesPerBeat_.load();
+    status.key = Key::fromIndex(bandKey_.load());
+    status.layers = bandLayers_.load();
     const double rate = infoSampleRate_.load();
     status.bpm = status.samplesPerBeat > 0.0 && rate > 0.0 ? 60.0 * rate / status.samplesPerBeat : 0.0;
     return status;
@@ -211,16 +246,20 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     maxBlockSize_ = std::max(device->getCurrentBufferSizeSamples(), 1);
 
     instrumentBuffer_.setSize(2, maxBlockSize_);
-    kitBuffer_.setSize(2, maxBlockSize_);
     scratch_.setSize(numScratchChannels, maxBlockSize_);
     scratch_.clear();
     instrument_.prepare(sampleRate_, maxBlockSize_);
-    drumKit_.prepare(sampleRate_, maxBlockSize_);
+    for (auto& part : parts_)
+    {
+        part.buffer.setSize(2, maxBlockSize_);
+        part.buffer.clear();
+        part.instrument.prepare(sampleRate_, maxBlockSize_);
+        part.currentGain = part.gain.load();
+    }
     player_.prepare(sampleRate_); // a restart stops the band
     player_.setLayerMask(layerMask_.load());
     limiter_.prepare(sampleRate_);
     timeMap_.restart();
-    currentDrumsGain_ = drumsGain_.load();
     probe_.prepare(sampleRate_);
     analyzer_.prepare(sampleRate_);
     analyzer_.reset(sampleTime_);
@@ -242,7 +281,8 @@ void AudioEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 void AudioEngine::audioDeviceStopped()
 {
     instrument_.allNotesOff();
-    drumKit_.allNotesOff();
+    for (auto& part : parts_)
+        part.instrument.allNotesOff();
     infoSampleRate_.store(0.0);
     infoBufferSize_.store(0);
 }
@@ -283,7 +323,10 @@ void AudioEngine::audioDeviceIOCallbackWithContext(const float* const* inputs, i
     if (numOutputs > 0 && outputs[0] != nullptr)
         raisePeak(outputPeak_, outputs[0], numSamples);
 
-    activeVoices_.store(instrument_.activeVoices() + drumKit_.activeVoices(), std::memory_order_relaxed);
+    int voices = instrument_.activeVoices();
+    for (const auto& part : parts_)
+        voices += part.instrument.activeVoices();
+    activeVoices_.store(voices, std::memory_order_relaxed);
     publishBandStatus();
     sampleTime_ += numSamples;
     publishedSampleTime_.store(sampleTime_, std::memory_order_relaxed);
@@ -317,11 +360,16 @@ void AudioEngine::applyCommands() noexcept
                 break;
 
             case Command::Type::setStyle:
+                // Stops the band. Its notes are released in the next block, still routed by the
+                // old style; the new routes apply after that.
                 player_.setStyle(command.style);
+                nextLayerRoutes_ = command.routes;
+                routesChanged_ = true;
                 break;
             case Command::Type::startBand:
-                player_.start(command.sample, command.samplesPerBeat, command.section, command.countInBars);
+                player_.start(command.sample, command.samplesPerBeat, command.section, command.countInBars, Key::fromIndex(command.keyIndex));
                 break;
+            case Command::Type::setBandKey:    player_.setKey(Key::fromIndex(command.keyIndex)); break;
             case Command::Type::stopBand:      player_.stop(); break;
             case Command::Type::stopBandNow:   player_.stopNow(); break;
             case Command::Type::nextSection:   player_.nextSection(); break;
@@ -341,23 +389,33 @@ void AudioEngine::publishBandStatus() noexcept
     bandPendingSection_.store(player_.pendingSection(), std::memory_order_relaxed);
     bandFillScheduled_.store(player_.fillScheduled(), std::memory_order_relaxed);
     bandSamplesPerBeat_.store(player_.style() != nullptr ? player_.samplesPerBeat() : 0.0, std::memory_order_relaxed);
+    bandKey_.store(player_.playingKey().index(), std::memory_order_relaxed);
+    bandLayers_.store(player_.state() == BandState::stopped ? 0u : player_.activeLayers(), std::memory_order_relaxed);
 }
 
 void AudioEngine::renderBand(std::int64_t chunkStart, int numSamples) noexcept
 {
     player_.process(chunkStart, numSamples,
         [this](const PlayerNote& note) {
+            auto& instrument = parts_[static_cast<std::size_t>(layerRoutes_[note.layer & 31u])].instrument;
             if (note.on)
-                drumKit_.noteOn(note.offset, note.note, note.velocity);
+                instrument.noteOn(note.offset, note.note, note.velocity);
             else
-                drumKit_.noteOff(note.offset, note.note);
+                instrument.noteOff(note.offset, note.note);
         },
         [this](const BeatTick& tick) {
             if (!beatTicks_.push(tick))
                 droppedTicks_.fetch_add(1, std::memory_order_relaxed);
         });
-    // The kit renders even when the band has stopped, so the last hits ring out.
-    drumKit_.render(kitBuffer_.getWritePointer(0), kitBuffer_.getWritePointer(1), numSamples);
+    if (routesChanged_)
+    {
+        layerRoutes_ = nextLayerRoutes_;
+        routesChanged_ = false;
+    }
+    // The instruments render even when the band has stopped, so the last notes ring out.
+    for (auto& part : parts_)
+        if (part.instrument.isLoaded())
+            part.instrument.render(part.buffer.getWritePointer(0), part.buffer.getWritePointer(1), numSamples);
 }
 
 const float* AudioEngine::readFileInput(int numSamples) noexcept
@@ -434,7 +492,7 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
     }
     currentMonitorGain_ = targetGain;
 
-    // Instruments: the test instrument, and the drum kit at its (ramped) volume. A mono
+    // Instruments: the test instrument, and the band's at their (ramped) volumes. A mono
     // output gets the average of the two channels.
     const auto mixStereo = [&](const float* left, const float* right, float startGain, float endGain) {
         if (numOutputs >= 2)
@@ -454,9 +512,14 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
     instrument_.render(left, right, numSamples);
     mixStereo(left, right, 1.0f, 1.0f);
 
-    const float drumsGain = drumsGain_.load(std::memory_order_relaxed);
-    mixStereo(kitBuffer_.getReadPointer(0), kitBuffer_.getReadPointer(1), currentDrumsGain_, drumsGain);
-    currentDrumsGain_ = drumsGain;
+    for (auto& part : parts_)
+    {
+        if (!part.instrument.isLoaded())
+            continue;
+        const float gain = part.gain.load(std::memory_order_relaxed);
+        mixStereo(part.buffer.getReadPointer(0), part.buffer.getReadPointer(1), part.currentGain, gain);
+        part.currentGain = gain;
+    }
 
     // Click track, heard in the headphones only (it is not in input.wav).
     if (clickTrack_.isRunning())

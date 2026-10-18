@@ -18,6 +18,9 @@ constexpr auto voiceFolderKey = "voiceFile.folder";
 constexpr auto bandVolumeKey = "band.volumeDb";
 constexpr auto bandDrumsKey = "band.drums";
 constexpr auto bandPercKey = "band.perc";
+constexpr auto bandBassKey = "band.bass";
+constexpr auto bandKeysKey = "band.keys";
+constexpr auto bandPadKey = "band.pad";
 
 constexpr float meterFloorDb = -60.0f;
 constexpr float meterDecayDbPerTick = 1.5f; // at 30 Hz, about 45 dB per second
@@ -183,7 +186,7 @@ MainComponent::MainComponent()
     addAndMakeVisible(pitchView_);
 
     hint_.setText("Band keys: Space taps the beat (four taps start the band), Enter starts or stops, N next section, F fill, "
-                  "Esc stops at once. A MIDI pedal or pad taps too.\n"
+                  "Esc stops at once. A MIDI pedal or pad taps too. Key: K locks it (or listens again), Up/Down a semitone, M relative.\n"
                   "Keys 1 to 8 play test notes. Drop a WAV file here to use it as the voice. Use \"Hear my voice\" only with headphones.",
                   juce::dontSendNotification);
     hint_.setJustificationType(juce::Justification::topLeft);
@@ -200,7 +203,7 @@ MainComponent::MainComponent()
     addAndMakeVisible(report_);
 
     setWantsKeyboardFocus(true);
-    setSize(960, 900);
+    setSize(960, 960);
     updateControls();
     updateReport();
     startTimerHz(30);
@@ -266,6 +269,23 @@ void MainComponent::resized()
     bandGainSlider_.setBounds(row.removeFromRight(220));
     bandGainLabel_.setBounds(row.removeFromRight(90));
     beatLamps_.setBounds(row);
+    area.removeFromTop(4);
+
+    row = area.removeFromTop(30);
+    keyLabel_.setBounds(row.removeFromLeft(60));
+    padToggle_.setBounds(row.removeFromRight(60));
+    keysToggle_.setBounds(row.removeFromRight(70));
+    bassToggle_.setBounds(row.removeFromRight(70));
+    row.removeFromRight(10);
+    relativeButton_.setBounds(row.removeFromRight(110));
+    row.removeFromRight(6);
+    keyUpButton_.setBounds(row.removeFromRight(40));
+    row.removeFromRight(4);
+    keyDownButton_.setBounds(row.removeFromRight(40));
+    row.removeFromRight(6);
+    lockButton_.setBounds(row.removeFromRight(80));
+    row.removeFromRight(8);
+    keyStatus_.setBounds(row);
     area.removeFromTop(10);
 
     row = area.removeFromTop(30);
@@ -305,7 +325,7 @@ void MainComponent::resized()
     pitchView_.setBounds(analysisRow);
     area.removeFromTop(4);
 
-    hint_.setBounds(area.removeFromTop(40));
+    hint_.setBounds(area.removeFromTop(56));
     area.removeFromTop(4);
     report_.setBounds(area);
 }
@@ -346,6 +366,25 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
             band_.fill();
         return true;
     }
+    if (character == lockKey_.keyCode && !key.getModifiers().isAnyModifierKeyDown())
+    {
+        if (pressBandKey(lockKey_))
+            band_.lockOrRelisten();
+        return true;
+    }
+    if (character == relativeKey_.keyCode && !key.getModifiers().isAnyModifierKeyDown())
+    {
+        if (pressBandKey(relativeKey_))
+            band_.toggleRelativeKey();
+        return true;
+    }
+    if (key.getKeyCode() == upKey_.keyCode || key.getKeyCode() == downKey_.keyCode)
+    {
+        const bool up = key.getKeyCode() == upKey_.keyCode;
+        if (pressBandKey(up ? upKey_ : downKey_))
+            band_.shiftKey(up ? 1 : -1);
+        return true;
+    }
 
     // Notes start and stop in keyStateChanged(); swallow the presses (and auto-repeats) here.
     return std::any_of(testKeys.begin(), testKeys.end(), [&](const TestKey& k) {
@@ -355,7 +394,7 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
 
 bool MainComponent::keyStateChanged(bool)
 {
-    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_ })
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_ })
         if (key->held && !juce::KeyPress::isKeyCurrentlyDown(key->keyCode))
             key->held = false;
 
@@ -378,7 +417,7 @@ bool MainComponent::keyStateChanged(bool)
 
 void MainComponent::focusLost(FocusChangeType)
 {
-    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_ })
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_ })
         key->held = false;
     for (std::size_t i = 0; i < testKeys.size(); ++i)
         if (std::exchange(testKeyDown_[i], false))
@@ -403,6 +442,7 @@ void MainComponent::timerCallback()
     drainEngineQueues();
     noteDisplay_.repaint();
     pitchView_.repaint();
+    band_.update();
     updateBand();
 
     if (--ticksUntilMidiScan_ <= 0)
@@ -436,6 +476,7 @@ void MainComponent::drainEngineQueues()
     {
         noteDisplay_.addFrame(frame);
         pitchView_.addFrame(frame);
+        band_.analysisFrame(frame);
         const auto start = engine_.sessionStartSample();
         if (engine_.isSessionOpen() && start >= 0)
             engine_.recorder().writeFrame(frame, start);
@@ -685,8 +726,15 @@ juce::DynamicObject::Ptr MainComponent::sessionMetadata()
     juce::DynamicObject::Ptr bandInfo = new juce::DynamicObject();
     bandInfo->setProperty("style", engine_.style() != nullptr ? juce::String(engine_.style()->name) : juce::String());
     bandInfo->setProperty("kit", engine_.drumKitName());
-    bandInfo->setProperty("drums", engine_.isLayerEnabled(0));
-    bandInfo->setProperty("perc", engine_.isLayerEnabled(1));
+    if (const auto* style = engine_.style())
+        for (std::size_t i = 0; i < style->layers.size(); ++i)
+            bandInfo->setProperty(juce::Identifier(style->layers[i]), engine_.isLayerEnabled(static_cast<int>(i)));
+    const auto estimate = band_.keyEstimate();
+    const char* keyStates[] = { "listening", "guessing", "confident", "locked" };
+    bandInfo->setProperty("key", juce::String(band_.bandKey().name()));
+    bandInfo->setProperty("keyEstimate", juce::String(estimate.best.name()));
+    bandInfo->setProperty("keyState", keyStates[static_cast<int>(estimate.state)]);
+    bandInfo->setProperty("singerTuningCents", std::round(estimate.tuningCents));
     bandInfo->setProperty("volumeDb", bandGainSlider_.getValue());
     bandInfo->setProperty("outputLatencySamples", engine_.outputLatencySamples());
     meta->setProperty("band", juce::var(bandInfo.get()));
@@ -943,6 +991,22 @@ juce::String MainComponent::buildReport()
     line("Groove:", engine_.style() != nullptr ? juce::String(engine_.style()->name) : juce::String("not loaded"));
     line("Drum kit:", engine_.drumKitName().isEmpty() ? juce::String("not loaded")
                       : engine_.drumKitName() + (missingKitSamples_ > 0 ? " (" + juce::String(missingKitSamples_) + " samples missing)" : juce::String()));
+    for (const auto part : { lb::AudioEngine::BandPart::bass, lb::AudioEngine::BandPart::keys, lb::AudioEngine::BandPart::pad })
+    {
+        auto name = engine_.bandInstrumentName(part);
+        if (part == lb::AudioEngine::BandPart::keys && missingPianoSamples_ > 0)
+            name << " (" << missingPianoSamples_ << " samples missing)";
+        line(juce::String(lb::AudioEngine::partName(part)).toUpperCase().substring(0, 1) + juce::String(lb::AudioEngine::partName(part)).substring(1) + ":",
+             name.isEmpty() ? juce::String("not loaded") : name);
+    }
+    {
+        const auto estimate = band_.keyEstimate();
+        const char* keyStates[] = { "listening", "guessing", "confident", "locked" };
+        line("Key:", juce::String("band ") + band_.bandKey().name() + "; estimate " + estimate.best.name() + " (" + keyStates[static_cast<int>(estimate.state)]
+                         + ", lead " + juce::String(estimate.margin, 3) + " of " + juce::String(estimate.requiredMargin, 3) + ", "
+                         + juce::String(estimate.notes) + " notes, " + juce::String(estimate.voicedSeconds, 1) + " s of voice)");
+        line("Singer's tuning:", juce::String(juce::roundToInt(estimate.tuningCents)) + " cents from A440");
+    }
     if (info.sampleRate > 0.0)
         line("Tap timing allows for:", formatMs(1000.0 * engine_.outputLatencySamples() / info.sampleRate) + " of output latency");
     juce::StringArray midiNames;
@@ -992,6 +1056,15 @@ void MainComponent::loadBand()
     if (!engine_.loadDrumKit(kitFile))
         bandProblem_ = "Could not load the drum kit " + kitFile.getFullPathName();
     missingKitSamples_ = countMissingSamples(kitFile.getParentDirectory());
+
+    using Part = lb::AudioEngine::BandPart;
+    const std::pair<Part, const char*> instruments[] = { { Part::bass, "sfz/bass/synth-bass.sfz" },
+                                                         { Part::keys, "sfz/keys/piano.sfz" },
+                                                         { Part::pad, "sfz/pad/warm-pad.sfz" } };
+    for (const auto& [part, path] : instruments)
+        if (!engine_.loadBandInstrument(part, assets.getChildFile(path)) && bandProblem_.isEmpty())
+            bandProblem_ = "Could not load " + assets.getChildFile(path).getFullPathName();
+    missingPianoSamples_ = countMissingSamples(assets.getChildFile("sfz/keys"));
 
     juce::String error;
     auto style = lb::loadStyle(assets.getChildFile("grooves/afrobeats"), error);
@@ -1055,20 +1128,48 @@ void MainComponent::setUpBandControls()
     sectionBox_.onChange = [this] { band_.selectSection(sectionBox_.getSelectedId() - 1); };
     addAndMakeVisible(sectionBox_);
 
-    const auto setUpLayer = [&](juce::ToggleButton& toggle, int layer, const char* key) {
+    const auto setUpLayer = [&](juce::ToggleButton& toggle, const char* name, const char* key) {
+        const int layer = style != nullptr ? style->layerIndex(name) : -1;
         toggle.setToggleState(settings->getBoolValue(key, true), juce::dontSendNotification);
         toggle.setWantsKeyboardFocus(false);
+        toggle.setEnabled(layer >= 0);
         toggle.onClick = [this, &toggle, layer, key] {
             engine_.setLayerEnabled(layer, toggle.getToggleState());
             properties_.getUserSettings()->setValue(key, toggle.getToggleState());
         };
-        engine_.setLayerEnabled(layer, toggle.getToggleState());
+        if (layer >= 0)
+            engine_.setLayerEnabled(layer, toggle.getToggleState());
         addAndMakeVisible(toggle);
     };
-    setUpLayer(drumsToggle_, 0, bandDrumsKey);
-    setUpLayer(percToggle_, 1, bandPercKey);
+    setUpLayer(drumsToggle_, "drums", bandDrumsKey);
+    setUpLayer(percToggle_, "perc", bandPercKey);
+    setUpLayer(bassToggle_, "bass", bandBassKey);
+    setUpLayer(keysToggle_, "keys", bandKeysKey);
+    setUpLayer(padToggle_, "pad", bandPadKey);
     drumsToggle_.setTooltip("Kick, snare, hi-hat, toms and cymbals.");
     percToggle_.setTooltip("Shaker, congas, tambourine and bells.");
+    bassToggle_.setTooltip("The synth bass, in the key.");
+    keysToggle_.setTooltip("The piano, in the key.");
+    padToggle_.setTooltip("The pad, in the key.");
+
+    // Key: what the band follows, and the overrides.
+    keyStatus_.setTooltip("The key the band plays in, and what the app hears in the singing.");
+    lockButton_.setTooltip("Lock the key the app hears now; when locked, listen again (K). The band keeps its key until the new one locks.");
+    lockButton_.onClick = [this] { band_.lockOrRelisten(); };
+    keyDownButton_.setTooltip("The key a semitone down (Down arrow).");
+    keyDownButton_.onClick = [this] { band_.shiftKey(-1); };
+    keyUpButton_.setTooltip("The key a semitone up (Up arrow).");
+    keyUpButton_.onClick = [this] { band_.shiftKey(1); };
+    relativeButton_.setTooltip("Swap major and its relative minor, e.g. C major and A minor (M).");
+    relativeButton_.onClick = [this] { band_.toggleRelativeKey(); };
+    for (auto* button : { &lockButton_, &keyDownButton_, &keyUpButton_, &relativeButton_ })
+    {
+        button->setWantsKeyboardFocus(false);
+        button->setEnabled(style != nullptr);
+        addAndMakeVisible(button);
+    }
+    addAndMakeVisible(keyLabel_);
+    addAndMakeVisible(keyStatus_);
 
     bandGainSlider_.setRange(-30.0, 6.0, 0.5);
     bandGainSlider_.setValue(settings->getDoubleValue(bandVolumeKey, 0.0), juce::dontSendNotification);
@@ -1076,7 +1177,9 @@ void MainComponent::setUpBandControls()
     bandGainSlider_.setTextBoxStyle(juce::Slider::TextBoxRight, false, 64, 22);
     bandGainSlider_.setWantsKeyboardFocus(false);
     bandGainSlider_.onValueChange = [this] {
-        engine_.setDrumsGain(juce::Decibels::decibelsToGain(static_cast<float>(bandGainSlider_.getValue())));
+        const float gain = juce::Decibels::decibelsToGain(static_cast<float>(bandGainSlider_.getValue()));
+        for (int part = 0; part < lb::AudioEngine::numBandParts; ++part)
+            engine_.setPartGain(static_cast<lb::AudioEngine::BandPart>(part), gain);
         properties_.getUserSettings()->setValue(bandVolumeKey, bandGainSlider_.getValue());
     };
     bandGainSlider_.onValueChange();
@@ -1121,6 +1224,10 @@ void MainComponent::updateBand()
     }
     beatLamps_.setBeat(heardTick_ ? &*heardTick_ : nullptr, secondsSinceBeat);
     beatLamps_.setStatus(bandStatusText(status));
+    keyStatus_.setText(keyStatusText(status), juce::dontSendNotification);
+    const bool locked = band_.keyEstimate().state == lb::KeyEstimator::State::locked;
+    lockButton_.setButtonText(locked ? "Listen again" : "Lock");
+    relativeButton_.setButtonText(band_.bandKey().isValid() && band_.bandKey().minor ? "Relative major" : "Relative minor");
 
     const bool running = status.state != lb::BandState::stopped;
     startButton_.setButtonText(running ? "Stop" : "Start");
@@ -1158,6 +1265,8 @@ juce::String MainComponent::bandStatusText(const lb::AudioEngine::BandStatus& st
                 return "Tap " + juce::String(taps) + " of " + juce::String(lb::BandController::tapsToStart) + "...";
             if (missingKitSamples_ > 0)
                 return "Only the kick is installed: run tools/python/fetch_assets.py for the rest of the kit.";
+            if (missingPianoSamples_ > 0)
+                return "The piano's samples are not installed: run tools/python/fetch_assets.py.";
             return "Ready. Tap the beat four times (Space), or press Enter for a count-in.";
         }
         case lb::BandState::waiting:
@@ -1179,6 +1288,41 @@ juce::String MainComponent::bandStatusText(const lb::AudioEngine::BandStatus& st
         text << "  -  fill";
     text << "  -  " << juce::String(status.bpm, 1) << " BPM";
     return text;
+}
+
+juce::String MainComponent::keyStatusText(const lb::AudioEngine::BandStatus& status) const
+{
+    using State = lb::KeyEstimator::State;
+    const auto estimate = band_.keyEstimate();
+    const auto percent = [](double share) { return juce::String(juce::roundToInt(100.0 * std::clamp(share, 0.0, 1.0))) + " %"; };
+    const auto tuning = [&] {
+        const int cents = juce::roundToInt(estimate.tuningCents);
+        return estimate.notes > 0 && std::abs(cents) >= 5 ? "  -  singer " + juce::String(cents > 0 ? "+" : "") + juce::String(cents) + " cents"
+                                                           : juce::String();
+    };
+
+    juce::String text;
+    const auto band = band_.bandKey();
+    switch (estimate.state)
+    {
+        case State::listening:
+            text = band.isValid() ? juce::String(band.name()) + "  -  listening again" : juce::String("Listening: sing a phrase or two");
+            break;
+        case State::guessing:
+        case State::confident:
+            text = band.isValid() ? juce::String(band.name()) + "  -  now hearing " : juce::String("Hearing ");
+            text << estimate.best.name() << " (" << percent(estimate.confidence) << " sure)";
+            break;
+        case State::locked:
+            text = juce::String(estimate.key.name()) + "  -  locked";
+            if (estimate.best.isValid() && estimate.best != estimate.key)
+                text << ", hearing " << estimate.best.name();
+            break;
+    }
+    // The band changes key on its next downbeat.
+    if (status.state == lb::BandState::playing && band.isValid() && status.key.isValid() && status.key != band)
+        text << "  -  " << band.name() << " from the next bar";
+    return text + tuning();
 }
 
 void MainComponent::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message)
