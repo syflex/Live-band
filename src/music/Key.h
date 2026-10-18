@@ -21,6 +21,9 @@ struct Key
     // "G major", "E minor", with the usual names for the black keys: C#, Eb, F#, Ab, Bb.
     std::string name() const;
     std::string shortName() const; // "G", "Em"
+    Key relative() const noexcept; // C major <-> A minor
+    // Reads "G", "Gm", "G major", "E minor", "F#m", "Bb", "Db major": false if it is not a key.
+    static bool parse(const std::string& text, Key& key);
 
     bool operator==(const Key& other) const noexcept { return tonic == other.tonic && minor == other.minor; }
     bool operator!=(const Key& other) const noexcept { return !(*this == other); }

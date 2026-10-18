@@ -232,3 +232,32 @@ TEST_CASE("KeyEstimator forgets an old key within the decay time when unlocked")
         t = sing(estimator, inAb, t); // 35 s in Ab major
     CHECK(estimator.estimate().best == (lb::Key { 8, false }));
 }
+
+TEST_CASE("Key names can be read back, and relative keys are found")
+{
+    lb::Key k;
+    REQUIRE(lb::Key::parse("G", k));
+    CHECK(k == lb::Key { 7, false });
+    REQUIRE(lb::Key::parse("F#m", k));
+    CHECK(k == lb::Key { 6, true });
+    REQUIRE(lb::Key::parse("Bb minor", k));
+    CHECK(k == lb::Key { 10, true });
+    REQUIRE(lb::Key::parse("Db major", k));
+    CHECK(k == lb::Key { 1, false });
+    REQUIRE(lb::Key::parse("cb", k));
+    CHECK(k == lb::Key { 11, false });
+    CHECK_FALSE(lb::Key::parse("H", k));
+    CHECK_FALSE(lb::Key::parse("Cdorian", k));
+    CHECK_FALSE(lb::Key::parse("", k));
+    for (int i = 0; i < 24; ++i)
+    {
+        const auto key = lb::Key::fromIndex(i);
+        REQUIRE(lb::Key::parse(key.name(), k));
+        CHECK(k == key);
+        REQUIRE(lb::Key::parse(key.shortName(), k));
+        CHECK(k == key);
+        CHECK(key.relative().relative() == key);
+    }
+    CHECK(lb::Key { 0, false }.relative() == lb::Key { 9, true });
+    CHECK(lb::Key { 4, true }.relative() == lb::Key { 7, false });
+}

@@ -10,10 +10,12 @@
 #include "engine/SessionRecorder.h"
 #include "engine/SfizzInstrument.h"
 #include "music/ClickTrack.h"
+#include "music/Key.h"
 #include "music/PatternPlayer.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -23,9 +25,9 @@ namespace lb
 {
 
 // Owns everything that runs in the audio callback: voice input (mic or a file), the vocal
-// analysis, voice pass-through, the band (a pattern player driving the drum kit), a test
-// instrument, the click track, the master limiter, session recording, the latency probe,
-// level meters and callback timing.
+// analysis, voice pass-through, the band (a pattern player driving the drum kit, bass, keys
+// and pad), a test instrument, the click track, the master limiter, session recording, the
+// latency probe, level meters and callback timing.
 //
 // Methods marked "message thread" must only be called from the JUCE message thread, which is
 // the single producer of the command queue and the single consumer of the analysis, click
@@ -46,7 +48,22 @@ public:
         bool fillScheduled = false;
         double samplesPerBeat = 0.0;
         double bpm = 0.0;
+        Key key;                    // the key the band plays in now
+        std::uint32_t layers = 0;   // the layers playing: staged entry and the layer switches
     };
+
+    // The band's instruments. A style's layers are routed by name: "bass", "keys" and "pad"
+    // to their own instruments, everything else to the drum kit.
+    enum class BandPart : std::uint8_t
+    {
+        drums,
+        bass,
+        keys,
+        pad
+    };
+    static constexpr int numBandParts = 4;
+    static const char* partName(BandPart part) noexcept;
+    static BandPart partForLayer(const std::string& layerName) noexcept;
 
     struct DeviceInfo
     {
@@ -67,7 +84,8 @@ public:
 
     // Message thread, while this engine is NOT registered as an audio callback.
     bool loadInstrument(const juce::File& sfzFile);
-    bool loadDrumKit(const juce::File& sfzFile);
+    bool loadBandInstrument(BandPart part, const juce::File& sfzFile);
+    bool loadDrumKit(const juce::File& sfzFile) { return loadBandInstrument(BandPart::drums, sfzFile); }
     void setFileInput(std::vector<float> samples, const juce::String& name);
     void setClock(Clock clock) noexcept { clock_ = clock; }
 
@@ -75,10 +93,12 @@ public:
     // every style it was given until it is destroyed, so the audio thread never reads a freed one.
     void setStyle(std::unique_ptr<Style> style);
     const Style* style() const noexcept { return style_; }
-    juce::String drumKitName() const { return drumKitName_; }
+    juce::String bandInstrumentName(BandPart part) const { return parts_[static_cast<std::size_t>(part)].name; }
+    juce::String drumKitName() const { return bandInstrumentName(BandPart::drums); }
 
     // Message thread: band commands, carried out at the start of the next callback.
-    void startBand(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars) noexcept;
+    // An invalid key starts the band without one: the drums alone, until setBandKey().
+    void startBand(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars, Key key = {}) noexcept;
     void stopBand() noexcept;    // a fill, then the ending
     void stopBandNow() noexcept; // silence at once
     void nextSection() noexcept;
@@ -86,9 +106,11 @@ public:
     void fill() noexcept;
     void setBandTempo(double samplesPerBeat) noexcept;
     void steerBand(std::int64_t sample, double samplesPerBeat) noexcept; // a beat falls on `sample`
+    void setBandKey(const Key& key) noexcept; // from the next downbeat
     void setLayerEnabled(int layer, bool enabled) noexcept;
     bool isLayerEnabled(int layer) const noexcept { return (layerMask_.load() & (1u << layer)) != 0; }
-    void setDrumsGain(float linearGain) noexcept { drumsGain_.store(linearGain); }
+    void setPartGain(BandPart part, float linearGain) noexcept { parts_[static_cast<std::size_t>(part)].gain.store(linearGain); }
+    void setDrumsGain(float linearGain) noexcept { setPartGain(BandPart::drums, linearGain); }
     bool popBeatTick(BeatTick& tick) noexcept { return beatTicks_.pop(tick); }
 
     // Any thread.
@@ -169,7 +191,8 @@ private:
             fill,
             setBandTempo,
             steerBand,
-            setLayerMask
+            setLayerMask,
+            setBandKey
         };
 
         Type type = Type::noteOn;
@@ -183,6 +206,18 @@ private:
         int section = 0;
         int countInBars = 0;
         std::uint32_t mask = 0;
+        std::int8_t keyIndex = -1;
+        std::array<BandPart, 32> routes {}; // with setStyle: the instrument of each layer
+    };
+
+    // One of the band's instruments, with its volume.
+    struct Part
+    {
+        SfizzInstrument instrument;
+        juce::String name;
+        juce::AudioBuffer<float> buffer; // sized in audioDeviceAboutToStart()
+        std::atomic<float> gain { 1.0f };
+        float currentGain = 1.0f;        // audio thread
     };
 
     void pushCommand(const Command& command) noexcept;
@@ -197,8 +232,10 @@ private:
 
     SfizzInstrument instrument_;
     juce::String instrumentName_;
-    SfizzInstrument drumKit_;
-    juce::String drumKitName_;
+    std::array<Part, numBandParts> parts_;
+    std::array<BandPart, 32> layerRoutes_ {}; // audio thread
+    std::array<BandPart, 32> nextLayerRoutes_ {};
+    bool routesChanged_ = false;
     std::vector<std::unique_ptr<Style>> styles_; // owned for the engine's lifetime
     const Style* style_ = nullptr;               // message thread's view
     Clock clock_ = &AudioEngine::systemClock;
@@ -221,12 +258,10 @@ private:
 
     // Sized in audioDeviceAboutToStart(); used only by the audio thread afterwards.
     juce::AudioBuffer<float> instrumentBuffer_;
-    juce::AudioBuffer<float> kitBuffer_;
     juce::AudioBuffer<float> scratch_; // channels: probe signal, click, file voice, silence
     int maxBlockSize_ = 0;
     double sampleRate_ = 0.0;
     float currentMonitorGain_ = 0.0f;
-    float currentDrumsGain_ = 1.0f;
     std::size_t filePosition_ = 0;
     std::int64_t sampleTime_ = 0; // timeline position of the current callback's first sample
     bool sessionActive_ = false;
@@ -242,7 +277,6 @@ private:
     std::atomic<std::uint64_t> droppedFrames_ { 0 };
     std::atomic<std::uint64_t> droppedClicks_ { 0 };
     std::atomic<std::uint64_t> droppedTicks_ { 0 };
-    std::atomic<float> drumsGain_ { 1.0f };
     std::atomic<std::uint32_t> layerMask_ { 0xffffffffu };
     std::atomic<int> measuredRoundTrip_ { 0 };
 
@@ -252,6 +286,8 @@ private:
     std::atomic<int> bandPendingSection_ { -1 };
     std::atomic<bool> bandFillScheduled_ { false };
     std::atomic<double> bandSamplesPerBeat_ { 0.0 };
+    std::atomic<int> bandKey_ { -1 };
+    std::atomic<std::uint32_t> bandLayers_ { 0 };
     std::atomic<std::int64_t> publishedSampleTime_ { 0 };
     std::atomic<std::int64_t> sessionStart_ { -1 };
 

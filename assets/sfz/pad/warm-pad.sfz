@@ -17,10 +17,10 @@ oscillator_detune=16
 fil_type=lpf_2p
 cutoff=1100
 resonance=0.6
-volume=-24
+volume=-22.5
 
 // A triangle an octave down for warmth.
 <region>
 sample=*triangle
 transpose=-12
-volume=-20
+volume=-18.5

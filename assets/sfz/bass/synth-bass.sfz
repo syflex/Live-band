@@ -13,12 +13,12 @@ hikey=127
 // The body: a pure sine at the note's pitch.
 <region>
 sample=*sine
-volume=-6
+volume=-3
 
 // The attack and growl: a saw through a low-pass filter that opens on each note.
 <region>
 sample=*saw
-volume=-17
+volume=-14
 fil_type=lpf_2p
 cutoff=280
 resonance=3

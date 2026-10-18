@@ -1,6 +1,7 @@
 #include "music/KeyEstimator.h"
 
 #include <algorithm>
+#include <cctype>
 #include <numbers>
 
 namespace lb
@@ -46,6 +47,44 @@ std::string Key::name() const
 std::string Key::shortName() const
 {
     return isValid() ? std::string(pitchNames[tonic]) + (minor ? "m" : "") : std::string("-");
+}
+
+Key Key::relative() const noexcept
+{
+    if (!isValid())
+        return {};
+    return minor ? Key { (tonic + 3) % 12, false } : Key { (tonic + 9) % 12, true };
+}
+
+bool Key::parse(const std::string& text, Key& key)
+{
+    std::string t;
+    for (const char c : text)
+        if (c != ' ')
+            t += c;
+    if (t.empty())
+        return false;
+    constexpr int naturals[7] = { 9, 11, 0, 2, 4, 5, 7 }; // A to G
+    const char letter = static_cast<char>(std::toupper(static_cast<unsigned char>(t[0])));
+    if (letter < 'A' || letter > 'G')
+        return false;
+    int tonic = naturals[letter - 'A'];
+    std::size_t i = 1;
+    if (i < t.size() && (t[i] == '#' || t[i] == 'b'))
+    {
+        // "Bb" is B flat; a lone "b" after the letter is never "minor" here.
+        tonic += t[i] == '#' ? 1 : -1;
+        ++i;
+    }
+    std::string mode = t.substr(i);
+    std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    bool isMinor = false;
+    if (mode == "m" || mode == "min" || mode == "minor")
+        isMinor = true;
+    else if (!(mode.empty() || mode == "maj" || mode == "major"))
+        return false;
+    key = { (tonic + 12) % 12, isMinor };
+    return true;
 }
 
 double mirexKeyScore(const Key& estimate, const Key& reference) noexcept

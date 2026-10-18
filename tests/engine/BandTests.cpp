@@ -27,6 +27,10 @@ namespace
 const juce::File assets(LB_ASSETS_DIR);
 const juce::File afrobeats = assets.getChildFile("grooves/afrobeats");
 const juce::File afroKit = assets.getChildFile("sfz/afro-kit/afro-kit.sfz");
+const juce::File synthBass = assets.getChildFile("sfz/bass/synth-bass.sfz");
+const juce::File warmPad = assets.getChildFile("sfz/pad/warm-pad.sfz");
+const juce::File piano = assets.getChildFile("sfz/keys/piano.sfz");
+constexpr int drumsLayer = 0, percLayer = 1, bassLayer = 2, keysLayer = 3, padLayer = 4;
 
 // CPU time used by this thread, so that time the OS gave to other processes is not counted.
 // Falls back to wall-clock time where it is not available.
@@ -52,12 +56,18 @@ struct BandHarness
 {
     static constexpr int heardLatency = lbtest::fakeOutputLatency + blockSize;
 
-    explicit BandHarness(bool loadKit = true)
+    explicit BandHarness(bool loadKit = true, bool loadHarmony = false)
     {
         fakeNow = 0.0;
         engine.setClock(&fakeClock);
         if (loadKit)
             REQUIRE(engine.loadDrumKit(afroKit));
+        if (loadHarmony)
+        {
+            REQUIRE(engine.loadBandInstrument(lb::AudioEngine::BandPart::bass, synthBass));
+            REQUIRE(engine.loadBandInstrument(lb::AudioEngine::BandPart::pad, warmPad));
+            engine.loadBandInstrument(lb::AudioEngine::BandPart::keys, piano); // its samples may not be downloaded
+        }
         juce::String error;
         auto style = lb::loadStyle(afrobeats, error);
         REQUIRE(style != nullptr);
@@ -92,8 +102,22 @@ struct BandHarness
             lb::BeatTick tick;
             while (engine.popBeatTick(tick))
                 ticks.push_back(tick);
+            // The message thread's work, as the app does it.
+            lb::AnalysisFrame frame;
+            while (engine.popAnalysisFrame(frame))
+                controller.analysisFrame(frame);
+            controller.update();
         }
         fakeNow = seconds; // the message thread acts at this time
+    }
+
+    // The output sample at which bar `bar` starts, from the beat ticks.
+    std::int64_t barStart(int bar) const
+    {
+        for (const auto& tick : ticks)
+            if (tick.bar == bar && tick.beat == 0)
+                return tick.sampleTime;
+        return -1;
     }
 
     // The first output sample at or after `from` louder than the threshold.
@@ -106,6 +130,7 @@ struct BandHarness
     }
 
     static double heardAt(std::int64_t outputSample) { return static_cast<double>(outputSample + heardLatency) / sampleRate; }
+    double fakeNowAfterBlock() const { return static_cast<double>(sample + blockSize) / sampleRate; }
 
     lbtest::FakeDevice device;
     lb::AudioEngine engine;
@@ -362,24 +387,163 @@ TEST_CASE("Band: MIDI taps and controls work like the keys")
     CHECK(!h.controller.handleMidi(juce::MidiMessage::controllerEvent(1, 7, 100))); // volume: not ours
 }
 
+namespace
+{
+// The strongest frequency between 30 and 250 Hz in the output from `from`, `seconds` long.
+double lowPeakHz(const std::vector<float>& output, std::int64_t from, double seconds)
+{
+    const auto n = static_cast<std::size_t>(seconds * sampleRate);
+    double bestHz = 0.0, bestPower = 0.0;
+    for (double hz = 30.0; hz <= 250.0; hz *= std::pow(2.0, 1.0 / 240.0)) // 5-cent steps
+    {
+        double re = 0.0, im = 0.0;
+        for (std::size_t i = 0; i < n && static_cast<std::size_t>(from) + i < output.size(); ++i)
+        {
+            const double phase = 2.0 * 3.141592653589793 * hz * static_cast<double>(i) / sampleRate;
+            re += output[static_cast<std::size_t>(from) + i] * std::cos(phase);
+            im += output[static_cast<std::size_t>(from) + i] * std::sin(phase);
+        }
+        if (re * re + im * im > bestPower)
+        {
+            bestPower = re * re + im * im;
+            bestHz = hz;
+        }
+    }
+    return bestHz;
+}
+
+int pitchClassOf(double hz)
+{
+    return ((static_cast<int>(std::lround(69.0 + 12.0 * std::log2(hz / 440.0))) % 12) + 12) % 12;
+}
+
+// A plain sung melody in D major, as a voice file: "Twinkle, twinkle" in two phrases, with a
+// gap between the notes and a breath after each phrase. It loops.
+std::vector<float> twinkleInD()
+{
+    const int melody[] = { 62, 62, 69, 69, 71, 71, 69, -1, 67, 67, 66, 66, 64, 64, 62, -1 };
+    std::vector<float> voice;
+    double phase = 0.0;
+    for (const int note : melody)
+    {
+        const int length = static_cast<int>((note < 0 ? 0.6 : 0.42) * sampleRate);
+        const double hz = note < 0 ? 0.0 : 440.0 * std::pow(2.0, (note - 69) / 12.0);
+        for (int i = 0; i < length; ++i)
+        {
+            const bool sounding = note >= 0 && i < length - static_cast<int>(0.06 * sampleRate);
+            phase += 2.0 * 3.141592653589793 * hz / sampleRate;
+            voice.push_back(sounding ? static_cast<float>(0.3 * std::sin(phase) + 0.1 * std::sin(2.0 * phase) + 0.05 * std::sin(3.0 * phase)) : 0.0f);
+        }
+    }
+    return voice;
+}
+} // namespace
+
+TEST_CASE("Band: a sung melody locks the key, and the band comes in on it with the staged entry")
+{
+    BandHarness h(true, true);
+    h.engine.setFileInput(twinkleInD(), "twinkle in D");
+    h.engine.setInputSource(lb::AudioEngine::InputSource::file);
+    h.keepOutput = false;
+
+    double lockedAt = -1.0;
+    for (double t = 0.5; t <= 20.0 && lockedAt < 0.0; t += 0.1)
+    {
+        h.runUntil(t);
+        if (h.controller.keyEstimate().state == lb::KeyEstimator::State::locked)
+            lockedAt = t;
+    }
+    REQUIRE(lockedAt > 0.0);
+    WARN("the key locked after " << lockedAt << " s of the melody");
+    CHECK(h.controller.keyEstimate().key == lb::Key { 2, false });
+    CHECK(h.controller.bandKey() == lb::Key { 2, false });
+
+    // Started now, the band knows the key: pad and piano first, the drums from bar 4, the bass from bar 8.
+    h.controller.startStop();
+    const auto layersAt = [&](int bar) {
+        while (h.barStart(bar) < 0)
+            h.runUntil(h.fakeNowAfterBlock());
+        h.runUntil(h.fakeNowAfterBlock()); // the status after that downbeat
+        return h.engine.bandStatus().layers;
+    };
+    CHECK(layersAt(0) == (1u << keysLayer | 1u << padLayer));
+    CHECK(h.engine.bandStatus().key == lb::Key { 2, false });
+    CHECK(layersAt(4) == (1u << keysLayer | 1u << padLayer | 1u << drumsLayer | 1u << percLayer));
+    CHECK(layersAt(8) == 0b11111u);
+
+    // Once the band has stopped, the next song starts by listening again.
+    h.controller.stopNow();
+    h.runUntil(h.fakeNowAfterBlock() + 0.05);
+    CHECK(h.engine.bandStatus().state == lb::BandState::stopped);
+    CHECK_FALSE(h.controller.bandKey().isValid());
+    CHECK(h.controller.keyEstimate().state != lb::KeyEstimator::State::locked);
+}
+
+TEST_CASE("Band: without a key the drums play alone; the bass comes in on the key, a semitone up by hand")
+{
+    BandHarness h(true, true);
+    for (const int layer : { drumsLayer, percLayer, keysLayer, padLayer })
+        h.engine.setLayerEnabled(layer, false); // listen to the bass alone
+    h.runUntil(0.5);
+    h.controller.setTempoBpm(104.0);
+    h.controller.startStop();
+    while (h.barStart(1) < 0)
+        h.runUntil(h.fakeNowAfterBlock());
+    CHECK(h.engine.bandStatus().layers == 0u); // the drums alone would play, and they are muted here
+
+    // G major, given by hand in bar 1: the bass comes in on the next four-bar boundary.
+    h.controller.setKey(lb::Key { 7, false });
+    while (h.barStart(6) < 0)
+        h.runUntil(h.fakeNowAfterBlock());
+    const auto bar4 = h.barStart(4);
+    const auto bassIn = h.firstSoundAfter(h.barStart(1), 0.001f); // after the count-in's sticks
+    CHECK(bassIn >= bar4);
+    CHECK(bassIn < bar4 + 64);
+    // Bar 4 is the progression's first bar: the bass holds the tonic for its first beat.
+    CHECK(pitchClassOf(lowPeakHz(h.output, bar4 + 400, 0.45)) == 7);
+    CHECK(h.engine.bandStatus().key == lb::Key { 7, false });
+
+    // A semitone up, to Ab: from the next downbeat; bar 8 starts the progression again.
+    h.controller.shiftKey(1);
+    CHECK(h.controller.bandKey() == lb::Key { 8, false });
+    while (h.barStart(9) < 0)
+        h.runUntil(h.fakeNowAfterBlock());
+    CHECK(pitchClassOf(lowPeakHz(h.output, h.barStart(8) + 400, 0.45)) == 8);
+
+    // Relative minor of Ab major: F minor.
+    h.controller.toggleRelativeKey();
+    CHECK(h.controller.bandKey() == lb::Key { 5, true });
+    h.controller.stopNow();
+    h.runUntil(h.fakeNowAfterBlock() + 0.5);
+    CHECK(h.engine.activeVoices() == 0);
+}
+
 TEST_CASE("Band: the callback does not allocate while the band plays, and the limiter holds the peaks")
 {
     REQUIRE(lb::rt::isGuardActive());
-    BandHarness h;
+    BandHarness h(true, true);
     h.engine.setDrumsGain(4.0f); // +12 dB, enough to hit the limiter
     h.runUntil(0.5);
     h.controller.setTempoBpm(110.0);
     h.controller.startStop();
     h.runUntil(3.0); // sfizz has started its voices
 
+    // The key arrives in bar 0, so the harmony comes in at bar 4 (about 11.5 s), changes key,
+    // carries on through a fill and ends with the band.
     const auto before = lb::rt::allocationCount();
+    h.controller.setKey(lb::Key { 9, true });
     h.controller.next();
-    h.runUntil(8.0);
-    h.controller.fill();
-    h.runUntil(12.0);
-    h.controller.startStop();
+    h.runUntil(13.0);
+    CHECK(h.engine.bandStatus().layers == 0b11111u);
+    CHECK(h.engine.bandStatus().key == lb::Key { 9, true });
+    h.controller.shiftKey(-2);
     h.runUntil(16.0);
+    h.controller.fill();
+    h.runUntil(19.0);
+    h.controller.startStop();
+    h.runUntil(24.0);
     CHECK(lb::rt::allocationCount() == before);
+    CHECK(h.engine.bandStatus().state == lb::BandState::stopped);
 
     const float peak = *std::max_element(h.output.begin(), h.output.end(), [](float a, float b) { return std::abs(a) < std::abs(b); });
     CHECK(std::abs(peak) <= juce::Decibels::decibelsToGain(-1.0f) + 1e-6f);

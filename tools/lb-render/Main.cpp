@@ -1,13 +1,15 @@
-// lb-render: plays a style through an SFZ drum kit, offline, into a WAV file. It drives the
-// same PatternPlayer and limiter the app uses, block by block, so it is a way to listen to
+// lb-render: plays a style through its SFZ instruments, offline, into a WAV file. It drives
+// the same PatternPlayer and limiter the app uses, block by block, so it is a way to listen to
 // a groove (and to check it) without an audio device.
 //
 //   lb-render --style assets/grooves/afrobeats --kit assets/sfz/afro-kit/afro-kit.sfz
-//             --plan Verse:8,Chorus:8 --out afrobeats.wav
+//             --bass assets/sfz/bass/synth-bass.sfz --keys assets/sfz/keys/piano.sfz
+//             --pad assets/sfz/pad/warm-pad.sfz --key G --plan Verse:8,Chorus:8 --out afrobeats.wav
 
 #include "audio/Limiter.h"
 #include "engine/GrooveLoader.h"
 #include "engine/SfizzInstrument.h"
+#include "music/Key.h"
 #include "music/PatternPlayer.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -16,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,13 +29,20 @@ void printUsage()
     std::puts(
         "usage: lb-render --style <folder> --kit <file.sfz> --out <file.wav> [options]\n"
         "\n"
+        "The style's layers named bass, keys and pad play through --bass, --keys and --pad (and\n"
+        "are silent without them); the other layers play through the drum kit, as in the app.\n"
+        "\n"
         "options:\n"
+        "  --bass/--keys/--pad <file.sfz>  the band's pitched instruments\n"
+        "  --key <key>         the key, known from the start, e.g. G, Em, F#m, Bb minor\n"
+        "  --key-at <bar>:<key>  the key arrives in the middle of a bar, e.g. 2:Em (may repeat);\n"
+        "                      without --key the band starts without one\n"
         "  --plan <list>       sections and bar counts, e.g. Verse:8,Chorus:8 (default: each section 4 bars)\n"
         "                      each change plays the outgoing section's fill in its last bar\n"
         "  --bpm <x>           tempo (default: the style's)\n"
         "  --count-in          start with a one-bar count-in\n"
         "  --mute <layer>      leave a layer out, e.g. perc (may repeat)\n"
-        "  --gain-db <x>       drum kit volume (default 0)\n"
+        "  --gain-db <x>       band volume (default 0)\n"
         "  --rate <hz>         sample rate (default 48000)\n"
         "  --block <n>         block size (default 128)\n"
         "  --events <file>     also write every note as CSV: time_s,note,velocity,layer,on\n");
@@ -42,6 +52,21 @@ struct Step
 {
     int section = 0;
     int bars = 4;
+};
+
+struct KeyChange
+{
+    int bar = 0;
+    lb::Key key;
+};
+
+// One of the band's instruments and the layers it plays.
+struct Part
+{
+    std::string name;
+    juce::File sfz;
+    std::unique_ptr<lb::SfizzInstrument> instrument;
+    double sumSquares = 0.0;
 };
 
 bool parsePlan(const juce::String& text, const lb::Style& style, std::vector<Step>& plan, juce::String& error)
@@ -70,6 +95,13 @@ int main(int argc, char* argv[])
     juce::File styleDir, kitFile, outFile, eventsFile;
     juce::String planText;
     juce::StringArray muted;
+    std::vector<Part> parts(4);
+    parts[0].name = "drums";
+    parts[1].name = "bass";
+    parts[2].name = "keys";
+    parts[3].name = "pad";
+    lb::Key startKey;
+    std::vector<KeyChange> keyChanges;
     double bpm = 0.0, rate = 48000.0;
     float gainDb = 0.0f;
     int blockSize = 128;
@@ -82,6 +114,26 @@ int main(int argc, char* argv[])
         const auto file = [&]() { return juce::File::getCurrentWorkingDirectory().getChildFile(next()); };
         if (arg == "--style") styleDir = file();
         else if (arg == "--kit") kitFile = file();
+        else if (arg == "--bass") parts[1].sfz = file();
+        else if (arg == "--keys") parts[2].sfz = file();
+        else if (arg == "--pad") parts[3].sfz = file();
+        else if (arg == "--key" || arg == "--key-at")
+        {
+            const auto text = next();
+            KeyChange change;
+            const auto keyText = arg == "--key" ? text : text.fromFirstOccurrenceOf(":", false, false);
+            if (arg == "--key-at")
+                change.bar = text.upToFirstOccurrenceOf(":", false, false).getIntValue();
+            if (!lb::Key::parse(keyText.toStdString(), change.key) || change.bar < 0 || (arg == "--key-at" && !text.containsChar(':')))
+            {
+                std::fprintf(stderr, "lb-render: %s is not a key\n", text.toRawUTF8());
+                return 2;
+            }
+            if (arg == "--key")
+                startKey = change.key;
+            else
+                keyChanges.push_back(change);
+        }
         else if (arg == "--out") outFile = file();
         else if (arg == "--events") eventsFile = file();
         else if (arg == "--plan") planText = next();
@@ -122,14 +174,26 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    lb::SfizzInstrument kit;
-    if (!kit.load(kitFile.getFullPathName().toStdString()))
+    parts[0].sfz = kitFile;
+    for (auto& part : parts)
     {
-        std::fprintf(stderr, "lb-render: cannot load %s\n", kitFile.getFullPathName().toRawUTF8());
-        return 1;
+        if (part.sfz == juce::File())
+            continue;
+        part.instrument = std::make_unique<lb::SfizzInstrument>();
+        if (!part.instrument->load(part.sfz.getFullPathName().toStdString()))
+        {
+            std::fprintf(stderr, "lb-render: cannot load %s\n", part.sfz.getFullPathName().toRawUTF8());
+            return 1;
+        }
+        part.instrument->prepare(rate, blockSize);
+        part.instrument->enableFreeWheeling();
     }
-    kit.prepare(rate, blockSize);
-    kit.enableFreeWheeling();
+    // Layers go to the part of the same name, the rest to the drum kit.
+    std::vector<int> route(style->layers.size(), 0);
+    for (std::size_t i = 0; i < style->layers.size(); ++i)
+        for (std::size_t p = 1; p < parts.size(); ++p)
+            if (style->layers[i] == parts[p].name)
+                route[i] = static_cast<int>(p);
 
     std::uint32_t mask = 0xffffffffu;
     for (const auto& layer : muted)
@@ -153,7 +217,7 @@ int main(int argc, char* argv[])
     const int bpb = style->beatsPerBar;
     const int countInBars = countIn ? 1 : 0;
     const auto downbeat = static_cast<std::int64_t>(std::llround(countInBars * bpb * spb)) + blockSize;
-    player.start(downbeat, spb, plan.front().section, countInBars);
+    player.start(downbeat, spb, plan.front().section, countInBars, startKey);
 
     // Requests go in at the start of each step's last bar, so its fill takes the whole bar.
     struct Request
@@ -173,6 +237,9 @@ int main(int argc, char* argv[])
     juce::AudioBuffer<float> mix(2, static_cast<int>(requests.back().sample + std::llround(bpb * spb) + 3.0 * rate));
     mix.clear();
     juce::AudioBuffer<float> block(2, blockSize);
+    juce::AudioBuffer<float> partBlock(2, blockSize);
+    std::sort(keyChanges.begin(), keyChanges.end(), [](const KeyChange& a, const KeyChange& b) { return a.bar < b.bar; });
+    std::size_t nextKeyChange = 0;
     lb::Limiter limiter;
     limiter.prepare(rate);
     const float gain = juce::Decibels::decibelsToGain(gainDb);
@@ -200,16 +267,22 @@ int main(int argc, char* argv[])
             else
                 player.selectSection(request.section);
         }
+        while (nextKeyChange < keyChanges.size()
+               && downbeat + std::llround((keyChanges[nextKeyChange].bar + 0.5) * bpb * spb) <= t)
+            player.setKey(keyChanges[nextKeyChange++].key);
         player.process(t, n,
             [&](const lb::PlayerNote& e) {
+                auto& instrument = parts[static_cast<std::size_t>(route[e.layer])].instrument;
+                if (instrument == nullptr)
+                    return;
                 if (e.on)
                 {
-                    kit.noteOn(e.offset, e.note, e.velocity);
+                    instrument->noteOn(e.offset, e.note, e.velocity);
                     ++notesPerLayer[e.layer];
                 }
                 else
                 {
-                    kit.noteOff(e.offset, e.note);
+                    instrument->noteOff(e.offset, e.note);
                 }
                 if (events.is_open())
                     events << (static_cast<double>(t + e.offset) / rate) << ',' << int(e.note) << ',' << int(e.velocity) << ','
@@ -217,8 +290,21 @@ int main(int argc, char* argv[])
             },
             [](const lb::BeatTick&) {});
 
-        kit.render(block.getWritePointer(0), block.getWritePointer(1), n);
-        block.applyGain(0, n, gain);
+        block.clear();
+        for (auto& part : parts)
+        {
+            if (part.instrument == nullptr)
+                continue;
+            part.instrument->render(partBlock.getWritePointer(0), partBlock.getWritePointer(1), n);
+            partBlock.applyGain(0, n, gain);
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const float* x = partBlock.getReadPointer(ch);
+                for (int i = 0; i < n; ++i)
+                    part.sumSquares += static_cast<double>(x[i]) * x[i];
+                block.addFrom(ch, 0, partBlock, ch, 0, n);
+            }
+        }
         limiter.process(block.getWritePointer(0), block.getWritePointer(1), n);
         minLimiterGain = std::min(minLimiterGain, limiter.currentGain());
         for (int ch = 0; ch < 2; ++ch)
@@ -245,6 +331,12 @@ int main(int argc, char* argv[])
                 juce::Decibels::gainToDecibels(minLimiterGain));
     for (std::size_t i = 0; i < style->layers.size(); ++i)
         std::printf("  %-8s %d notes\n", style->layers[i].c_str(), notesPerLayer[i]);
+    for (const auto& part : parts)
+        if (part.instrument != nullptr)
+            std::printf("  %-8s RMS %.1f dBFS over the whole file, before the limiter\n", part.name.c_str(),
+                        juce::Decibels::gainToDecibels(static_cast<float>(std::sqrt(part.sumSquares / (2.0 * mix.getNumSamples())))));
+    if (player.playingKey().isValid())
+        std::printf("  key      %s at the end\n", player.playingKey().name().c_str());
     if (player.sustainedNotes() != 0 || player.droppedEvents() != 0)
     {
         std::fprintf(stderr, "lb-render: %d notes still held, %llu events dropped\n", player.sustainedNotes(),

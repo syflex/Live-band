@@ -45,7 +45,7 @@ BandController::TapResult BandController::tap(double seconds)
         if (!engine_.sampleAtTime(estimate.timeOfTap(estimate.taps), downbeat))
             return TapResult::ignored;
         bpm_ = bpm;
-        engine_.startBand(std::llround(downbeat) - latency, spb, status.section, 0);
+        engine_.startBand(std::llround(downbeat) - latency, spb, status.section, 0, sentKey_);
         return TapResult::started;
     }
     if (status.state == BandState::playing)
@@ -78,7 +78,7 @@ void BandController::startStop()
     const double rate = engine_.deviceInfo().sampleRate;
     const double downbeat = now + startLeadSeconds * rate + engine_.style()->beatsPerBar * spb;
     taps_.reset();
-    engine_.startBand(std::llround(downbeat), spb, status.section, 1);
+    engine_.startBand(std::llround(downbeat), spb, status.section, 1, sentKey_);
 }
 
 void BandController::stopNow()
@@ -116,6 +116,78 @@ int BandController::tapCount() const
     if (estimate.taps == 0 || engine_.now() - estimate.lastTap > tapRunTimeoutSeconds)
         return 0;
     return estimate.taps;
+}
+
+void BandController::analysisFrame(const AnalysisFrame& frame)
+{
+    const double rate = engine_.deviceInfo().sampleRate;
+    if (rate <= 0.0)
+        return;
+    keys_.process(static_cast<double>(frame.sampleTime) / rate, frame.isVoiced(), frame.midiPitch, frame.rmsDb);
+    sendKeyIfLocked();
+}
+
+void BandController::update()
+{
+    const auto state = engine_.bandStatus().state;
+    if (state == BandState::stopped && lastState_ != BandState::stopped)
+    {
+        // The song is over: the next one may be in another key.
+        keys_.reset();
+        sentKey_ = {};
+    }
+    lastState_ = state;
+}
+
+Key BandController::currentKey() const noexcept
+{
+    const auto estimate = keys_.estimate();
+    if (estimate.state == KeyEstimator::State::locked)
+        return estimate.key;
+    return estimate.state == KeyEstimator::State::listening ? sentKey_ : estimate.best;
+}
+
+void BandController::sendKeyIfLocked()
+{
+    if (!keys_.isLocked())
+        return;
+    const Key key = keys_.estimate().key;
+    if (key.isValid() && key != sentKey_)
+    {
+        sentKey_ = key;
+        engine_.setBandKey(key);
+    }
+}
+
+void BandController::lockOrRelisten()
+{
+    if (keys_.isLocked())
+    {
+        keys_.reset(); // the band keeps sentKey_ until the estimator locks again
+        return;
+    }
+    if (const auto key = currentKey(); key.isValid())
+        setKey(key);
+}
+
+void BandController::shiftKey(int semitones)
+{
+    if (const auto key = currentKey(); key.isValid())
+        setKey(key.transposed(semitones));
+}
+
+void BandController::toggleRelativeKey()
+{
+    if (const auto key = currentKey(); key.isValid())
+        setKey(key.relative());
+}
+
+void BandController::setKey(const Key& key)
+{
+    if (!key.isValid())
+        return;
+    keys_.lock(key);
+    sendKeyIfLocked();
 }
 
 bool BandController::handleMidi(const juce::MidiMessage& message)
