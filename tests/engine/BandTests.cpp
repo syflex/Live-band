@@ -148,13 +148,42 @@ TEST_CASE("GrooveLoader reads the Afrobeats style")
     CHECK(style->beatsPerBar == 4);
     CHECK(style->defaultBpm == 104.0);
     CHECK(style->swing == Approx(0.54));
-    CHECK(style->layers == std::vector<std::string> { "drums", "perc" });
+    CHECK(style->layers == std::vector<std::string> { "drums", "perc", "bass", "keys", "pad" });
+    CHECK(style->pitchedLayers == 0b11100u);
+    CHECK(style->fillLayers == 0b00011u);
     REQUIRE(style->sections.size() == 2);
     CHECK(style->sections[0].name == "Verse");
-    CHECK(style->sections[0].main.lengthBeats == 8.0);
+    CHECK(style->sections[0].main.lengthBeats == 16.0);
+    CHECK(style->sections[0].mainMinor.lengthBeats == 16.0);
     CHECK(style->sections[0].fill.lengthBeats == 4.0);
     CHECK(style->countIn.size() == 4);
     CHECK(style->entry.size() == 1);
+    CHECK(style->ending.size() == 9);
+
+    // Staged entry: pad and piano, then the drums, then the bass; without a key the drums
+    // alone, and the harmony on a four-bar boundary once the key is known.
+    REQUIRE(style->entryKeyKnown.size() == 3);
+    CHECK(style->entryKeyKnown[0].bar == 0);
+    CHECK(style->entryKeyKnown[0].layers == 0b11000u);
+    CHECK(style->entryKeyKnown[1].bar == 4);
+    CHECK(style->entryKeyKnown[1].layers == 0b00011u);
+    CHECK(style->entryKeyKnown[2].bar == 8);
+    CHECK(style->entryKeyKnown[2].layers == 0b00100u);
+    REQUIRE(style->entryKeyUnknown.size() == 1);
+    CHECK(style->entryKeyUnknown[0].layers == 0b00011u);
+    CHECK(style->afterKeyLockLayers == 0b11100u);
+    CHECK(style->afterKeyLockEveryBars == 4);
+
+    // The harmony, in C: the major verse walks C G Am F, the minor one Cm Ab Eb Bb.
+    const auto bassAt = [](const lb::Pattern& p, double beat) {
+        const auto it = std::find_if(p.notes.begin(), p.notes.end(), [&](const lb::GrooveNote& n) { return n.beat == beat && n.layer == 2; });
+        return it == p.notes.end() ? -1 : int { it->note };
+    };
+    CHECK(bassAt(style->sections[0].main, 0.0) == 36);
+    CHECK(bassAt(style->sections[0].main, 4.0) == 43);
+    CHECK(bassAt(style->sections[0].main, 8.0) == 33);
+    CHECK(bassAt(style->sections[0].mainMinor, 0.0) == 36);
+    CHECK(bassAt(style->sections[0].mainMinor, 4.0) == 32);
 
     // The verse opens with an accented kick and a soft hat on beat 1, and the shaker on the perc layer.
     const auto& notes = style->sections[0].main.notes;
@@ -177,7 +206,7 @@ TEST_CASE("GrooveLoader explains what is wrong with a broken style")
 
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("lb-style-" + juce::Uuid().toString());
     REQUIRE(folder.createDirectory());
-    for (const auto* name : { "verse.mid", "chorus.mid", "fill-verse.mid", "fill-chorus.mid" })
+    for (const auto* name : { "verse.mid", "verse-minor.mid", "chorus.mid", "chorus-minor.mid", "fill-verse.mid", "fill-chorus.mid" })
         REQUIRE(afrobeats.getChildFile(name).copyFileTo(folder.getChildFile(name)));
     auto json = afrobeats.getChildFile("style.json").loadFileAsString();
 

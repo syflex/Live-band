@@ -30,8 +30,18 @@ struct Pattern
 struct Section
 {
     std::string name;
-    Pattern main;
-    Pattern fill; // one bar, played into the next section or on request
+    Pattern main;      // in C major
+    Pattern mainMinor; // in C minor; empty if the section has no minor version
+    Pattern fill;      // one bar, played into the next section or on request
+
+    const Pattern& patternFor(bool minor) const noexcept { return minor && !mainMinor.notes.empty() ? mainMinor : main; }
+};
+
+// One step of a staged entry: from `bar` on, these layers play too.
+struct EntryStage
+{
+    int bar = 0;
+    std::uint32_t layers = 0; // bit i is Style::layers[i]
 };
 
 // A playing style: its sections, its feel and its tempo range. Built on the message thread
@@ -45,10 +55,23 @@ struct Style
     double maxBpm = 180.0;
     double swing = 0.5; // share of an eighth note taken by its first sixteenth; 0.5 is straight
     std::vector<std::string> layers;
+    std::uint32_t pitchedLayers = 0; // transposed to the key; patterns are written in C
+    std::uint32_t fillLayers = ~0u;  // what a fill replaces; other layers carry on
     std::vector<GrooveNote> countIn; // one bar, played before the band starts without taps
     std::vector<GrooveNote> entry;   // added on the downbeat when the band starts or a section begins
     std::vector<GrooveNote> ending;  // the final hits, on the downbeat after the last fill
     std::vector<Section> sections;
+
+    // Staged entry: with the key known when the band starts, and without it. With no stages
+    // every layer plays from the first bar. Without a key, afterKeyLockLayers join at the first
+    // multiple of afterKeyLockEveryBars after the key arrives.
+    std::vector<EntryStage> entryKeyKnown;
+    std::vector<EntryStage> entryKeyUnknown;
+    std::uint32_t afterKeyLockLayers = 0;
+    int afterKeyLockEveryBars = 4;
+
+    int layerIndex(const std::string& name) const noexcept;
+    std::uint32_t allLayers() const noexcept { return layers.size() >= 32 ? ~0u : (1u << layers.size()) - 1u; }
 
     // A tapped tempo moved by octaves into [minBpm, maxBpm]: a singer tapping half time
     // at 55 BPM gets 110.

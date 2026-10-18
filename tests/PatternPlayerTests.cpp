@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <random>
 #include <vector>
@@ -74,6 +75,48 @@ lb::Style makeStyle()
     return style;
 }
 
+// makeStyle with a bass and a pad on layers 2 and 3, written in C. Section "A" has the bass
+// on C2 on beat 1 and G2 on beat 3 of each bar, and a held pad chord with an E (C major); its
+// minor version has an Eb instead. "B" has the bass on every beat.
+constexpr int bassLayer = 2, padLayer = 3;
+constexpr int bassC = 36, bassG = 43, padC = 60, padE = 64, padEb = 63;
+
+lb::Style makeHarmonicStyle()
+{
+    auto style = makeStyle();
+    style.layers = { "drums", "perc", "bass", "pad" };
+    style.pitchedLayers = 1u << bassLayer | 1u << padLayer;
+    style.fillLayers = 0b0011u;
+    auto& a = style.sections[0];
+    for (int bar = 0; bar < 2; ++bar)
+    {
+        a.main.notes.push_back(note(bar * 4.0, bassC, bassLayer));
+        a.main.notes.push_back(note(bar * 4.0 + 2.0, bassG, bassLayer));
+        for (int n : { padC, padE })
+        {
+            auto held = note(bar * 4.0, n, padLayer, 70);
+            held.lengthBeats = 3.9f;
+            a.main.notes.push_back(held);
+        }
+    }
+    a.main.sort();
+    a.mainMinor = a.main;
+    for (auto& n : a.mainMinor.notes)
+        if (n.layer == padLayer && n.note == padE)
+            n.note = padEb;
+    a.mainMinor.sort();
+    for (int i = 0; i < 4; ++i)
+        style.sections[1].main.notes.push_back(note(i, bassC, bassLayer));
+    style.sections[1].main.sort();
+    style.ending.push_back(note(0.0, bassC, bassLayer));
+    return style;
+}
+
+lb::Key key(int tonic, bool minor = false)
+{
+    return { tonic, minor };
+}
+
 struct Played
 {
     std::int64_t time = 0;
@@ -105,13 +148,31 @@ struct Recorder
         }
     }
 
-    std::vector<std::int64_t> onsOf(int number) const
+    std::vector<std::int64_t> onsOf(int number, int layer = -1) const
     {
         std::vector<std::int64_t> out;
         for (const auto& p : notes)
-            if (p.on && p.note == number)
+            if (p.on && p.note == number && (layer < 0 || p.layer == layer))
                 out.push_back(p.time);
         return out;
+    }
+
+    // The notes switched on on a layer, in [from, to), in time order.
+    std::vector<int> layerNotes(int layer, std::int64_t from = 0, std::int64_t to = std::numeric_limits<std::int64_t>::max()) const
+    {
+        std::vector<int> out;
+        for (const auto& p : notes)
+            if (p.on && p.layer == layer && p.time >= from && p.time < to)
+                out.push_back(p.note);
+        return out;
+    }
+
+    std::int64_t firstOn(int layer) const
+    {
+        for (const auto& p : notes)
+            if (p.on && p.layer == layer)
+                return p.time;
+        return -1;
     }
 
     // Every note-on is followed by its note-off.
@@ -385,21 +446,22 @@ TEST_CASE("PatternPlayer joins at the right phase when the start command arrives
 
 TEST_CASE("PatternPlayer keeps time over 30 minutes and never leaves a note hanging")
 {
-    const auto style = makeStyle();
+    const auto style = makeHarmonicStyle();
     lb::PatternPlayer player;
     player.prepare(rate);
     player.setStyle(&style);
     const double spb = 48000.0 * 60.0 / 104.0;
-    player.start(0, spb, 0, 0);
+    player.start(0, spb, 0, 0, key(7));
 
     std::mt19937 random(11);
     std::uniform_int_distribution<int> blockSize(16, 1024);
     std::uniform_int_distribution<int> action(0, 400);
+    std::uniform_int_distribution<int> anyKey(0, 23);
     std::int64_t t = 0, worst = 0, ticks = 0;
     std::int64_t onCount = 0, offCount = 0;
     std::map<std::pair<int, int>, int> open;
     for (int number = 0; number < 128; ++number)
-        for (int layer = 0; layer < 2; ++layer)
+        for (int layer = 0; layer < 4; ++layer)
             open[{ number, layer }] = 0; // so that counting in the audio section does not allocate
     bool balanced = true;
     const auto before = lb::rt::allocationCount();
@@ -413,6 +475,7 @@ TEST_CASE("PatternPlayer keeps time over 30 minutes and never leaves a note hang
             {
                 case 0: player.nextSection(); break;
                 case 1: player.fill(); break;
+                case 2: player.setKey(lb::Key::fromIndex(anyKey(random))); break;
                 default: break;
             }
             player.process(t, n,
@@ -442,4 +505,196 @@ TEST_CASE("PatternPlayer keeps time over 30 minutes and never leaves a note hang
     CHECK(onCount == offCount);
     CHECK(onCount > 30 * 104 * 2);
     CHECK(player.droppedEvents() == 0);
+}
+
+TEST_CASE("PatternPlayer moves the pitched layers to the key, in their register, and plays minor keys in minor")
+{
+    const auto style = makeHarmonicStyle();
+    constexpr double spb = 24000.0;
+    for (int index = 0; index < 24; ++index)
+    {
+        const auto k = lb::Key::fromIndex(index);
+        lb::PatternPlayer player;
+        player.prepare(rate);
+        player.setStyle(&style);
+        player.start(0, spb, 0, 0, k);
+        Recorder r;
+        std::int64_t t = 0;
+        r.run(player, t, static_cast<std::int64_t>(4 * spb));
+
+        const int shift = lb::PatternPlayer::transposition(k);
+        CHECK(shift >= -6);
+        CHECK(shift <= 5);
+        CHECK(((shift % 12) + 12) % 12 == k.tonic);
+        CHECK(r.layerNotes(bassLayer) == std::vector<int> { bassC + shift, bassG + shift });
+        auto pad = r.layerNotes(padLayer);
+        std::sort(pad.begin(), pad.end());
+        CHECK(pad == std::vector<int> { padC + shift, (k.minor ? padEb : padE) + shift });
+        CHECK(r.onsOf(kick, 0).size() == 2); // the drums are never moved
+        CHECK(r.onsOf(crash).size() == 1);
+    }
+}
+
+TEST_CASE("PatternPlayer: without a key the harmony waits; a key change takes effect on the next downbeat")
+{
+    const auto style = makeHarmonicStyle();
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    constexpr double spb = 24000.0;
+    const auto bar = [&](double b) { return static_cast<std::int64_t>(b * 4 * spb); };
+    player.start(0, spb, 0, 0);
+
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, bar(0.4));
+    CHECK(r.layerNotes(bassLayer).empty()); // no key, no bass
+    CHECK(r.layerNotes(padLayer).empty());
+    CHECK(r.onsOf(kick, 0).size() == 1);    // but the drums play
+
+    player.setKey(key(7)); // G major, in the middle of bar 0
+    CHECK(player.key() == key(7));
+    CHECK_FALSE(player.playingKey().isValid());
+    r.run(player, t, bar(1.4));
+    CHECK(r.layerNotes(bassLayer, 0, bar(1)).empty());
+    CHECK(r.layerNotes(bassLayer, bar(1), bar(2)) == std::vector<int> { bassC - 5 });
+    CHECK(r.firstOn(bassLayer) == bar(1));
+    CHECK(player.playingKey() == key(7));
+
+    // A minor, while the G major pad chord is held: the chord is released at its own end,
+    // and the next bar starts in A minor.
+    player.setKey(key(9, true));
+    r.run(player, t, bar(3));
+    CHECK(r.layerNotes(bassLayer, bar(1), bar(2)) == std::vector<int> { bassC - 5, bassG - 5 });
+    auto pad = r.layerNotes(padLayer, bar(2), bar(3));
+    std::sort(pad.begin(), pad.end());
+    CHECK(pad == std::vector<int> { padC - 3, padEb - 3 });
+    CHECK(r.layerNotes(bassLayer, bar(2), bar(3)) == std::vector<int> { bassC - 3, bassG - 3 });
+
+    player.stopNow();
+    r.run(player, t, t + 256);
+    CHECK(r.balanced());
+    CHECK(player.sustainedNotes() == 0);
+}
+
+TEST_CASE("PatternPlayer: a fill replaces only the fill layers; the harmony carries on")
+{
+    const auto style = makeHarmonicStyle();
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    constexpr double spb = 24000.0;
+    player.start(0, spb, 0, 0, key(0));
+
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, static_cast<std::int64_t>(1.0 * spb));
+    player.fill();
+    r.run(player, t, static_cast<std::int64_t>(4.0 * spb));
+
+    CHECK(r.onsOf(kick, 0) == std::vector<std::int64_t> { 0 });                     // the kick on 3 gave way to the fill
+    CHECK(r.onsOf(tom).size() == 3);                                                // the fill's beats 2 to 4
+    CHECK(r.layerNotes(bassLayer) == std::vector<int> { bassC, bassG });            // the bass kept playing
+    CHECK(r.onsOf(bassG) == std::vector<std::int64_t> { beatSample(0, spb, 2) });
+}
+
+TEST_CASE("PatternPlayer: staged entry with the key known brings the drums in later, with the entry hits")
+{
+    auto style = makeHarmonicStyle();
+    style.entryKeyKnown = { { 0, 1u << padLayer }, { 1, 0b0011u }, { 2, 1u << bassLayer } };
+    style.entryKeyUnknown = { { 0, 0b0011u } };
+    style.afterKeyLockLayers = 1u << bassLayer | 1u << padLayer;
+    style.afterKeyLockEveryBars = 2;
+    REQUIRE(style.validate().empty());
+
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    constexpr double spb = 24000.0;
+    const auto bar = [&](double b) { return static_cast<std::int64_t>(b * 4 * spb); };
+    player.start(1000, spb, 0, 0, key(2)); // D major, known at the start
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, 1000 + bar(3));
+
+    CHECK(r.firstOn(padLayer) == 1000);
+    CHECK(r.onsOf(kick, 0).front() == 1000 + bar(1));
+    CHECK(r.onsOf(crash) == std::vector<std::int64_t> { 1000 + bar(1) }); // the entry crash comes with the drums
+    CHECK(r.firstOn(bassLayer) == 1000 + bar(2));
+    CHECK(r.layerNotes(bassLayer).front() == bassC + 2);
+    REQUIRE(r.ticks.size() == 12);
+    CHECK((r.ticks[0].flags & lb::BeatTick::sectionStart) != 0);
+    CHECK((r.ticks[4].flags & lb::BeatTick::sectionStart) != 0);
+    CHECK((r.ticks[8].flags & lb::BeatTick::sectionStart) == 0); // the bass brings no crash
+    player.stopNow();
+    r.run(player, t, t + 256);
+    CHECK(r.balanced());
+}
+
+TEST_CASE("PatternPlayer: staged entry without a key brings the harmony in on a boundary after the key arrives")
+{
+    auto style = makeHarmonicStyle();
+    style.entryKeyKnown = { { 0, 1u << padLayer }, { 1, 0b0011u }, { 2, 1u << bassLayer } };
+    style.entryKeyUnknown = { { 0, 0b0011u } };
+    style.afterKeyLockLayers = 1u << bassLayer | 1u << padLayer;
+    style.afterKeyLockEveryBars = 2;
+    constexpr double spb = 24000.0;
+    const auto bar = [&](double b) { return static_cast<std::int64_t>(b * 4 * spb); };
+
+    SECTION("the key arrives while the band plays")
+    {
+        lb::PatternPlayer player;
+        player.prepare(rate);
+        player.setStyle(&style);
+        player.start(0, spb, 0, 0);
+        Recorder r;
+        std::int64_t t = 0;
+        r.run(player, t, bar(2.5));
+        CHECK(r.onsOf(kick, 0).front() == 0); // the drums from the start
+        CHECK(r.layerNotes(bassLayer).empty());
+        CHECK(player.activeLayers() == 0b0011u);
+
+        player.setKey(key(4, true)); // E minor, heard in bar 2: in from bar 4, not bar 3
+        r.run(player, t, bar(5));
+        CHECK(player.playingKey() == key(4, true));
+        CHECK(r.firstOn(bassLayer) == bar(4));
+        CHECK(r.firstOn(padLayer) == bar(4));
+        CHECK(r.layerNotes(bassLayer).front() == bassC + 4);
+        CHECK(r.onsOf(crash) == std::vector<std::int64_t> { 0 }); // the drums were already in
+        CHECK(player.activeLayers() == 0b1111u);
+    }
+
+    SECTION("the key arrives before the first downbeat: the band enters as if it had been known")
+    {
+        lb::PatternPlayer player;
+        player.prepare(rate);
+        player.setStyle(&style);
+        player.start(bar(1), spb, 0, 0);
+        player.setKey(key(9));
+        Recorder r;
+        std::int64_t t = 0;
+        r.run(player, t, bar(4));
+        CHECK(r.firstOn(padLayer) == bar(1));
+        CHECK(r.onsOf(kick, 0).front() == bar(2));
+        CHECK(r.firstOn(bassLayer) == bar(3));
+    }
+}
+
+TEST_CASE("PatternPlayer: the ending hits sound in the key and every note is released")
+{
+    const auto style = makeHarmonicStyle();
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    constexpr double spb = 24000.0;
+    player.start(0, spb, 0, 0, key(10)); // Bb major: down two semitones
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, static_cast<std::int64_t>(4.2 * spb));
+    player.stop();
+    for (int i = 0; i < 400 && player.state() != lb::BandState::stopped; ++i)
+        r.run(player, t, t + 512);
+    CHECK(player.state() == lb::BandState::stopped);
+    CHECK(r.layerNotes(bassLayer).back() == bassC - 2); // the final bass note, in Bb
+    CHECK(r.balanced());
 }

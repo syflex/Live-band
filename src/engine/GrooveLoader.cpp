@@ -9,7 +9,34 @@ namespace lb
 {
 namespace
 {
-std::vector<GrooveNote> readHits(const juce::var& list)
+std::uint32_t readLayerMask(const juce::var& list, const std::vector<std::string>& layers, juce::String& error)
+{
+    std::uint32_t mask = 0;
+    if (const auto* names = list.getArray())
+    {
+        for (const auto& name : *names)
+        {
+            const auto found = std::find(layers.begin(), layers.end(), name.toString().toStdString());
+            if (found == layers.end())
+                error = "\"" + name.toString() + "\" is not one of the style's layers";
+            else
+                mask |= 1u << (found - layers.begin());
+        }
+    }
+    return mask;
+}
+
+std::vector<EntryStage> readStages(const juce::var& list, const std::vector<std::string>& layers, juce::String& error)
+{
+    std::vector<EntryStage> stages;
+    if (const auto* items = list.getArray())
+        for (const auto& item : *items)
+            stages.push_back({ static_cast<int>(item.getProperty("bar", 0)), readLayerMask(item.getProperty("layers", juce::var()), layers, error) });
+    std::stable_sort(stages.begin(), stages.end(), [](const EntryStage& a, const EntryStage& b) { return a.bar < b.bar; });
+    return stages;
+}
+
+std::vector<GrooveNote> readHits(const juce::var& list, const std::vector<std::string>& layers)
 {
     std::vector<GrooveNote> hits;
     if (const auto* array = list.getArray())
@@ -21,7 +48,16 @@ std::vector<GrooveNote> readHits(const juce::var& list)
             n.note = static_cast<std::uint8_t>(juce::jlimit(0, 127, static_cast<int>(item.getProperty("note", 0))));
             n.velocity = static_cast<std::uint8_t>(juce::jlimit(1, 127, static_cast<int>(item.getProperty("velocity", 100))));
             n.lengthBeats = static_cast<float>(static_cast<double>(item.getProperty("length", 0.125)));
-            n.layer = static_cast<std::uint8_t>(static_cast<int>(item.getProperty("layer", 0)));
+            const auto layer = item.getProperty("layer", 0);
+            if (layer.isString())
+            {
+                const auto found = std::find(layers.begin(), layers.end(), layer.toString().toStdString());
+                n.layer = static_cast<std::uint8_t>(found != layers.end() ? found - layers.begin() : 0);
+            }
+            else
+            {
+                n.layer = static_cast<std::uint8_t>(static_cast<int>(layer));
+            }
             hits.push_back(n);
         }
     }
@@ -137,9 +173,25 @@ std::unique_ptr<Style> loadStyle(const juce::File& folder, juce::String& error)
     if (style->layers.empty())
         style->layers.push_back("drums");
 
-    style->countIn = readHits(json.getProperty("countIn", juce::var()));
-    style->entry = readHits(json.getProperty("entry", juce::var()));
-    style->ending = readHits(json.getProperty("ending", juce::var()));
+    style->countIn = readHits(json.getProperty("countIn", juce::var()), style->layers);
+    style->entry = readHits(json.getProperty("entry", juce::var()), style->layers);
+    style->ending = readHits(json.getProperty("ending", juce::var()), style->layers);
+
+    juce::String layerError;
+    style->pitchedLayers = readLayerMask(json.getProperty("pitchedLayers", juce::var()), style->layers, layerError);
+    if (json.hasProperty("fillLayers"))
+        style->fillLayers = readLayerMask(json.getProperty("fillLayers", juce::var()), style->layers, layerError);
+    const auto staged = json.getProperty("stagedEntry", juce::var());
+    style->entryKeyKnown = readStages(staged.getProperty("keyKnown", juce::var()), style->layers, layerError);
+    style->entryKeyUnknown = readStages(staged.getProperty("keyUnknown", juce::var()), style->layers, layerError);
+    const auto afterLock = staged.getProperty("afterKeyLock", juce::var());
+    style->afterKeyLockLayers = readLayerMask(afterLock.getProperty("layers", juce::var()), style->layers, layerError);
+    style->afterKeyLockEveryBars = static_cast<int>(afterLock.getProperty("everyBars", 4));
+    if (layerError.isNotEmpty())
+    {
+        error = juce::String(style->name) + ": " + layerError;
+        return nullptr;
+    }
 
     if (const auto* sections = json.getProperty("sections", juce::var()).getArray())
     {
@@ -149,6 +201,9 @@ std::unique_ptr<Style> loadStyle(const juce::File& folder, juce::String& error)
             section.name = item.getProperty("name", "Section").toString().toStdString();
             if (!readPattern(folder.getChildFile(item.getProperty("pattern", "").toString()), style->layers, style->beatsPerBar, section.main, error)
                 || !readPattern(folder.getChildFile(item.getProperty("fill", "").toString()), style->layers, style->beatsPerBar, section.fill, error))
+                return nullptr;
+            if (item.hasProperty("patternMinor")
+                && !readPattern(folder.getChildFile(item.getProperty("patternMinor", "").toString()), style->layers, style->beatsPerBar, section.mainMinor, error))
                 return nullptr;
             style->sections.push_back(std::move(section));
         }

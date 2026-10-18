@@ -17,11 +17,55 @@ void PatternPlayer::setStyle(const Style* style) noexcept
     stopNow();
     style_ = style;
     startSection_ = 0;
+    entryLayers_ = 0;
     if (style_ != nullptr)
+    {
         startSpb_ = 60.0 * sampleRate_ / style_->defaultBpm;
+        for (const auto& hit : style_->entry)
+            entryLayers_ |= 1u << hit.layer;
+    }
 }
 
-void PatternPlayer::start(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars) noexcept
+void PatternPlayer::applyKey(const Key& key) noexcept
+{
+    key_ = key;
+    transpose_ = transposition(key);
+    minor_ = key.isValid() && key.minor;
+}
+
+void PatternPlayer::setKey(const Key& key) noexcept
+{
+    if (!key.isValid())
+        return;
+    if (state_ == BandState::playing || state_ == BandState::ending)
+    {
+        pendingKey_ = key;
+        return;
+    }
+    applyKey(key);
+    if (state_ == BandState::waiting && style_ != nullptr && waitingForKey_)
+    {
+        // The key arrived before the first downbeat: enter as if it had been known.
+        stageCount_ = 0;
+        for (const auto& stage : style_->entryKeyKnown)
+            if (stageCount_ < maxStages)
+                stages_[static_cast<std::size_t>(stageCount_++)] = stage;
+        waitingForKey_ = false;
+    }
+}
+
+std::uint32_t PatternPlayer::arrangementFor(int bar) const noexcept
+{
+    std::uint32_t mask = stageCount_ == 0 ? ~0u : 0u;
+    for (int i = 0; i < stageCount_; ++i)
+        if (bar >= stages_[static_cast<std::size_t>(i)].bar)
+            mask |= stages_[static_cast<std::size_t>(i)].layers;
+    if (!key_.isValid() && style_ != nullptr)
+        mask &= ~style_->pitchedLayers; // nothing to play them in yet
+    return mask;
+}
+
+void PatternPlayer::start(std::int64_t downbeatSample, double samplesPerBeat, int section, int countInBars, Key key) noexcept
 {
     if (style_ == nullptr || !(samplesPerBeat > 0.0))
         return;
@@ -29,6 +73,15 @@ void PatternPlayer::start(std::int64_t downbeatSample, double samplesPerBeat, in
         flushRequested_ = true;
 
     resetArrangement();
+    applyKey(key);
+    pendingKey_ = {};
+    const auto& plan = key.isValid() ? style_->entryKeyKnown : style_->entryKeyUnknown;
+    stageCount_ = 0;
+    for (const auto& stage : plan)
+        if (stageCount_ < maxStages)
+            stages_[static_cast<std::size_t>(stageCount_++)] = stage;
+    waitingForKey_ = !key.isValid() && style_->afterKeyLockLayers != 0;
+    arrangementMask_ = 0;
     const int bpb = style_->beatsPerBar;
     countInBars = std::max(countInBars, 0);
     startSample_ = std::llround(static_cast<double>(downbeatSample) - countInBars * bpb * samplesPerBeat);
@@ -195,6 +248,26 @@ void PatternPlayer::enterBar(int bar) noexcept
         sectionStartBar_ = 0;
         entryThisBar_ = true;
     }
+
+    // A new key takes effect on the downbeat. The first key of a band that started without
+    // one brings the harmony in at the next stage boundary.
+    if (pendingKey_.isValid())
+    {
+        const bool firstKey = !key_.isValid();
+        applyKey(pendingKey_);
+        pendingKey_ = {};
+        if (firstKey && waitingForKey_ && stageCount_ < maxStages)
+        {
+            const int every = style_->afterKeyLockEveryBars;
+            stages_[static_cast<std::size_t>(stageCount_++)] = { (bar + every - 1) / every * every, style_->afterKeyLockLayers };
+            waitingForKey_ = false;
+        }
+    }
+    const std::uint32_t arrangement = arrangementFor(bar);
+    if (bar > 0 && (arrangement & ~arrangementMask_ & entryLayers_) != 0)
+        entryThisBar_ = true; // the drums come in: with the entry hits
+    arrangementMask_ = arrangement;
+
     barKind_ = bar == fillBar_ ? BarKind::fill : BarKind::main;
 }
 
@@ -331,25 +404,41 @@ void PatternPlayer::playBarSegment(int bar, double segmentStart, double segmentE
     if (entryThisBar_)
         hits(style_->entry, false);
 
+    // The section's pattern, in the key's mode; in a fill bar, the fill replaces the fill
+    // layers and the others carry on.
     const Section& section = style_->sections[static_cast<std::size_t>(section_)];
-    const bool isFill = barKind_ == BarKind::fill;
-    const Pattern& pattern = isFill ? section.fill : section.main;
-    const int bpb = style_->beatsPerBar;
-    const int bars = std::max(pattern.bars(bpb), 1);
-    const int barInPattern = isFill ? 0 : ((bar - sectionStartBar_) % bars + bars) % bars;
-    const double patternOffset = static_cast<double>(barInPattern) * bpb;
+    const Pattern& main = section.patternFor(minor_);
+    const int bars = std::max(main.bars(style_->beatsPerBar), 1);
+    const int barInPattern = ((bar - sectionStartBar_) % bars + bars) % bars;
+    if (barKind_ == BarKind::fill)
+    {
+        playPatternBar(main, barInPattern, barStart, segmentStart, segmentEnd, ~style_->fillLayers);
+        playPatternBar(section.fill, 0, barStart, segmentStart, segmentEnd, style_->fillLayers);
+    }
+    else
+    {
+        playPatternBar(main, barInPattern, barStart, segmentStart, segmentEnd, ~0u);
+    }
+}
 
+void PatternPlayer::playPatternBar(const Pattern& pattern, int barInPattern, double barStart, double segmentStart, double segmentEnd,
+                                   std::uint32_t layers) noexcept
+{
+    const int bpb = style_->beatsPerBar;
+    const double patternOffset = static_cast<double>(barInPattern) * bpb;
     const auto byBeat = [](const GrooveNote& n, double beat) { return n.beat < beat; };
     const auto* first = std::lower_bound(pattern.notes.data(), pattern.notes.data() + pattern.notes.size(), patternOffset, byBeat);
     const auto* last = std::lower_bound(first, pattern.notes.data() + pattern.notes.size(), patternOffset + bpb, byBeat);
-    playNotes(first, last, barStart, patternOffset, segmentStart, segmentEnd, true, false);
+    playNotes(first, last, barStart, patternOffset, segmentStart, segmentEnd, true, false, layers);
 }
 
 void PatternPlayer::playNotes(const GrooveNote* begin, const GrooveNote* end, double barStart, double patternOffset,
-                              double segmentStart, double segmentEnd, bool swing, bool ignoreMask) noexcept
+                              double segmentStart, double segmentEnd, bool swing, bool ignoreMask, std::uint32_t layers) noexcept
 {
     for (const GrooveNote* n = begin; n != end; ++n)
     {
+        if ((layers & (1u << n->layer)) == 0)
+            continue;
         double position = n->beat - patternOffset;
         if (swing)
             position = swingBeat(position, style_->swing);
@@ -364,15 +453,23 @@ void PatternPlayer::playNotes(const GrooveNote* begin, const GrooveNote* end, do
 
 void PatternPlayer::noteOn(double beat, const GrooveNote& note, bool ignoreMask) noexcept
 {
-    if (!ignoreMask && (layerMask_ & (1u << note.layer)) == 0)
+    const std::uint32_t bit = 1u << note.layer;
+    if (!ignoreMask && (layerMask_ & arrangementMask_ & bit) == 0)
         return;
     const int offset = offsetOf(beat);
+
+    // The pitch that sounds: moved to the key for the pitched layers. Its note-off uses the
+    // same pitch, so a key change can never leave a note hanging.
+    int pitch = note.note;
+    if ((style_->pitchedLayers & bit) != 0)
+        pitch = std::clamp(pitch + transpose_, 0, 127);
+    const auto sounding = static_cast<std::uint8_t>(pitch);
 
     // A repeated note: release the earlier one first.
     for (int i = 0; i < pendingCount_; ++i)
     {
         auto& p = pending_[static_cast<std::size_t>(i)];
-        if (p.note == note.note && p.layer == note.layer)
+        if (p.note == sounding && p.layer == note.layer)
         {
             push({ offset, p.note, 0, p.layer, false });
             p = pending_[static_cast<std::size_t>(--pendingCount_)];
@@ -380,11 +477,11 @@ void PatternPlayer::noteOn(double beat, const GrooveNote& note, bool ignoreMask)
         }
     }
 
-    push({ offset, note.note, note.velocity, note.layer, true });
+    push({ offset, sounding, note.velocity, note.layer, true });
     if (pendingCount_ < maxPending)
-        pending_[static_cast<std::size_t>(pendingCount_++)] = { beat + note.lengthBeats, note.note, note.layer };
+        pending_[static_cast<std::size_t>(pendingCount_++)] = { beat + note.lengthBeats, sounding, note.layer };
     else
-        push({ offset, note.note, 0, note.layer, false }); // never leave a note hanging
+        push({ offset, sounding, 0, note.layer, false }); // never leave a note hanging
 }
 
 void PatternPlayer::releaseDue(double untilBeat) noexcept
