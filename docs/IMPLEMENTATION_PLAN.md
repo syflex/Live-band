@@ -652,6 +652,10 @@ Results: [docs/results/PHASE3_RESULTS.md](results/PHASE3_RESULTS.md).
     E3 to Eb5, pad Ab2 to Bb4 in every key).
   - No hanging notes on transposition or section changes: **met** (unit and engine
     tests, `lb-render`).
+  - Not an exit criterion, but to watch: on the cloud machine the full band costs
+    about three times the drums (engine soak median 6.9%), and the running app had 81
+    overruns in 5 minutes with the full band against 56 with the drums alone. The
+    laptop soak with the full band decides whether the pad needs to be cheaper.
 
 ### Phase 4: Feel, control and the 6/8 style (week 4)
 - [ ] Vocal loudness drives velocity, fills and the intense variant.

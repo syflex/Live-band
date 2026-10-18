@@ -107,9 +107,10 @@ detection, and other apps can block exclusive mode. Do this once:
    ear cup, click **Measure latency**, then **Start**. The app plays seven short
    chirps. The result appears as **Measured round trip**. If it says the chirps
    were not heard, hold the mic closer and turn the volume up.
-7. Leave the app running for 30 minutes with the band playing (section 6; press **Enter**
-   to start it, and **N** now and then to change section). Click **Reset peaks**
-   first. Watch **Overruns** and **Driver-reported dropouts**; both should stay
+7. Leave the app running for 30 minutes with the full band playing: drums, bass, piano
+   and pad (sections 6 and 7; sing, or play a voice file, until the key locks, then
+   press **Enter** to start, and **N** now and then to change section). Click **Reset
+   peaks** first. Watch **Overruns** and **Driver-reported dropouts**; both should stay
    at 0.
 8. Click **Copy report** and paste the text into the chat or a GitHub issue.
 

@@ -12,6 +12,7 @@ Measured on 18 October 2026, on the `phase-3-key` branch.
 | Transposed bass and keys stay in their registers | in all 24 keys: bass D1 to C4, piano E3 to Eb5, pad Ab2 to Bb4 | stays in register | met |
 | No hanging notes on transposition or section changes | every note-on released after 30 simulated minutes of random section changes, fills and key changes, and after key changes during held chords | none | met |
 | 30-minute soak with the full band (engine) | median **6.9%** of the time budget, 999 callbacks in 1000 under **21%** CPU time; 1 callback over budget, as many as a control loop doing identical work | under 100% | met for the sustained cost; spikes need the laptop |
+| The running app on the cloud machine, 5 minutes with the full band | average load 13.7%; **81 overruns** in 114,336 callbacks (0.07%), against 56 with the drums alone in the same conditions | 0 overruns | not met here; to repeat on the laptop |
 
 As in the earlier phases, everything here was measured on the cloud test machine: unit
 and engine tests, offline evaluations, and the app itself running in real time on a
@@ -184,10 +185,24 @@ by bar:
 The levels are relative (dB of summed spectral power). The drums come in on bar 5 and the
 bass on bar 9, playing G then D as the G major verse (G D Em C) requires.
 
-In this run (about 30 seconds of audio, while screenshots were being taken) the app
-reported an average callback load of 10.9% with the full band, and 3 overruns. As in Phase 2, the cloud machine runs the app without
-real-time priority, and taking a screenshot competes for the CPU; the engine soak below
-shows no sustained cost problem. The laptop has to confirm it.
+The app was then left playing for 5 minutes, once with the full band and once with the
+bass, piano and pad switched off, a few minutes apart, with nothing else running:
+
+| 5 minutes in the running app | Average callback load | Slow callbacks (> 80%) | Overruns (> 100%) |
+|---|---|---|---|
+| Full band | 13.7% | 152 | **81** in 114,336 callbacks (0.07%) |
+| Drums and percussion only | 7.5% | 104 | **56** in 115,143 callbacks (0.05%) |
+
+Neither is the zero the project needs. Most of the overruns come from the machine: with
+the drums alone the rate is already seven times that of the Phase 2 app soak (45 in 30
+minutes), so the cloud machine was busier than it was then. It is a virtual machine
+with four cores that runs the app without real-time priority, so other work can pause
+the audio thread; the engine soak below, which measures only the engine's own work,
+shows no sustained cost problem. But the full band adds about 45% more overruns on top,
+because a longer callback is more often pushed past its deadline by such a pause. **The
+laptop soak with the full band (WINDOWS_SETUP.md, section 4, step 7) decides whether
+this is a problem**; if it is, the pad (five detuned saws per note) is the first thing
+to make cheaper.
 
 ## Soak and cost
 
