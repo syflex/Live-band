@@ -197,6 +197,8 @@ private:
     BandKey relativeKey_ { 'm' };
     BandKey upKey_ { juce::KeyPress::upKey };
     BandKey downKey_ { juce::KeyPress::downKey };
+    BandKey leftKey_ { juce::KeyPress::leftKey };
+    BandKey rightKey_ { juce::KeyPress::rightKey };
     int ticksUntilMidiScan_ = 0;
 
     std::array<bool, testKeys.size()> testKeyDown_ {};

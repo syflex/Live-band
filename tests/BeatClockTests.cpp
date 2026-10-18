@@ -89,26 +89,46 @@ TEST_CASE("BeatClock changes tempo without moving the current beat")
     CHECK(clock.beatAt(t) == Approx(4.0)); // two beats in the next half second
 }
 
-TEST_CASE("BeatClock steers onto a new phase gradually and never runs backwards")
+TEST_CASE("BeatClock steers onto a new phase within a bar, at a steady rate, and never runs backwards")
 {
     constexpr double spb = 24000.0;
     lb::BeatClock clock;
     clock.start(0, 0.0, spb);
 
-    // The band is 0.3 beats late against the new target line.
+    // The band is 0.3 beats late against the new target line: one bar at 7.5% faster.
     clock.steer(0, 0.3, spb);
     double previous = -1.0;
     std::int64_t t = 0;
+    double minRate = 2.0, maxRate = 0.0;
+    for (; t < static_cast<std::int64_t>(4 * spb); t += 256)
+    {
+        const auto span = clock.advance(t, 256);
+        REQUIRE(span.startBeat > previous);
+        previous = span.startBeat;
+        minRate = std::min(minRate, span.beatsPerSample * spb);
+        maxRate = std::max(maxRate, span.beatsPerSample * spb);
+    }
+    CHECK(minRate == Approx(1.075).margin(0.002)); // steady, not a lurch that fades out
+    CHECK(maxRate == Approx(1.075).margin(0.002));
+    CHECK(std::abs(clock.beatAt(t) - clock.targetBeatAt(t)) < 0.002); // back on the line after one bar
+
+    // Half a beat with a two-beat bar would need 25%: the clock runs at its 15% limit and
+    // finishes after the bar, still without a jump.
+    auto settings = clock.settings();
+    settings.relockBeats = 2.0;
+    clock.setSettings(settings);
+    clock.steer(t, clock.beatAt(t) - 0.5, spb);
     double maxDeviation = 0.0;
-    for (; t < static_cast<std::int64_t>(12 * spb); t += 256)
+    const auto steeredAt = t;
+    for (; t < steeredAt + static_cast<std::int64_t>(6 * spb); t += 256)
     {
         const auto span = clock.advance(t, 256);
         REQUIRE(span.startBeat > previous);
         previous = span.startBeat;
         maxDeviation = std::max(maxDeviation, std::abs(span.beatsPerSample * spb - 1.0));
     }
-    CHECK(maxDeviation <= 0.08 + 1e-12);
-    CHECK(std::abs(clock.beatAt(t) - clock.targetBeatAt(t)) < 0.01); // caught up within 12 beats
+    CHECK(maxDeviation <= 0.15 + 1e-12);
+    CHECK(std::abs(clock.beatAt(t) - clock.targetBeatAt(t)) < 0.002);
 }
 
 TEST_CASE("TapTempo: four steady taps give the tempo and predict the fifth exactly")

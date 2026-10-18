@@ -23,6 +23,9 @@ void PatternPlayer::setStyle(const Style* style) noexcept
         startSpb_ = 60.0 * sampleRate_ / style_->defaultBpm;
         for (const auto& hit : style_->entry)
             entryLayers_ |= 1u << hit.layer;
+        auto clockSettings = clock_.settings();
+        clockSettings.relockBeats = style_->beatsPerBar; // re-taps re-lock within a bar
+        clock_.setSettings(clockSettings);
     }
 }
 

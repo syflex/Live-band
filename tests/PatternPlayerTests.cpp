@@ -421,7 +421,7 @@ TEST_CASE("PatternPlayer: a tempo change keeps the bar running, and steering mov
     {
         CHECK(tick.sampleTime > previousTick);
         if (previousTick > 0)
-            CHECK(std::abs((tick.sampleTime - previousTick) - 20000) <= 1742); // at most 8% slower: 20000 / 0.92
+            CHECK(std::abs((tick.sampleTime - previousTick) - 20000) <= 3530); // at most 15% slower: 20000 / 0.85
         previousTick = tick.sampleTime;
     }
     // By now the beats sit on the new line, within a sample.

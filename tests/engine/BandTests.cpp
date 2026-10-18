@@ -354,6 +354,88 @@ TEST_CASE("Band: tapping while it plays pulls it onto the new tempo and beat")
     CHECK(std::abs(offGrid) < 0.003);
 }
 
+TEST_CASE("Band: four taps while it plays re-lock it within one bar, without a jump (Phase 4 exit criterion)")
+{
+    // The singer taps four beats at `bpm`, the first at `first`; the band plays at 104 BPM.
+    // Returns the worst distance from the tapped grid of the beats heard from one bar after
+    // the fourth tap, and checks that no beat comes more than 15% early or late against the
+    // tempo it is heading for (a steady catch-up, not a jump).
+    const auto relock = [](double bpm, double first) {
+        BandHarness h(false);
+        h.runUntil(0.5);
+        std::mt19937 random(3);
+        tapFour(h, 0.5, 104.0, 0.0, random);
+        h.runUntil(first - 0.5);
+        const double period = 60.0 / bpm;
+        double lastTap = 0.0;
+        for (int i = 0; i < 4; ++i)
+        {
+            lastTap = first + i * period;
+            h.runUntil(lastTap);
+            CHECK(h.controller.tap(lastTap) == (i < 3 ? lb::BandController::TapResult::counting : lb::BandController::TapResult::steered));
+        }
+        h.ticks.clear();
+        h.runUntil(lastTap + 12 * period);
+        CHECK(h.engine.bandStatus().bpm == Approx(bpm).epsilon(0.001));
+
+        double worst = 0.0;
+        double previous = -1.0;
+        for (const auto& tick : h.ticks)
+        {
+            const double heard = BandHarness::heardAt(tick.sampleTime);
+            if (previous > 0.0)
+            {
+                const double interval = heard - previous;
+                CHECK(interval > period / 1.15 - 0.001);
+                CHECK(interval < period / 0.85 + 0.001);
+            }
+            previous = heard;
+            if (heard >= lastTap + 4 * period)
+                worst = std::max(worst, std::abs(std::remainder(heard - first, period)));
+        }
+        return worst;
+    };
+
+    SECTION("the singer slows to 98 BPM, 120 ms off the band's beat")
+    {
+        const double worst = relock(98.0, 6.12);
+        WARN("from one bar after the fourth tap, the beats are at most " << worst * 1000.0 << " ms from the tapped grid");
+        CHECK(worst < 0.005);
+    }
+    SECTION("the singer is almost half a beat off the band, at the same tempo")
+    {
+        const double worst = relock(104.0, 0.5 + 9 * 60.0 / 104.0 + 0.45 * 60.0 / 104.0);
+        WARN("from one bar after the fourth tap, the beats are at most " << worst * 1000.0 << " ms from the tapped grid");
+        CHECK(worst < 0.005);
+    }
+}
+
+TEST_CASE("Band: the nudge keys change the tempo by 1% without moving the beat")
+{
+    BandHarness h(false);
+    h.runUntil(0.5);
+    h.controller.setTempoBpm(100.0);
+    h.controller.nudgeTempo(-1); // while stopped: the tempo it will start at
+    CHECK(h.controller.tempoBpm() == Approx(100.0 / 1.01));
+    h.controller.nudgeTempo(1);
+    CHECK(h.controller.tempoBpm() == Approx(100.0)); // a step down and a step up cancel out
+    h.controller.setTempoBpm(100.0);
+    h.controller.startStop();
+    h.runUntil(5.0);
+
+    h.ticks.clear();
+    h.controller.nudgeTempo(1);
+    CHECK(h.controller.handleMidi(juce::MidiMessage::controllerEvent(1, 85, 127))); // MIDI: once more
+    h.runUntil(9.0);
+    CHECK(h.engine.bandStatus().bpm == Approx(102.01).epsilon(0.0005));
+
+    // The beats move on at the new tempo straight away, without a jump.
+    REQUIRE(h.ticks.size() > 4);
+    const double period = 60.0 / 102.01;
+    for (std::size_t i = 2; i < h.ticks.size(); ++i)
+        CHECK(static_cast<double>(h.ticks[i].sampleTime - h.ticks[i - 1].sampleTime) / sampleRate == Approx(period).margin(0.0005));
+}
+
 TEST_CASE("Band: Enter starts with a count-in and stops with a fill and the final hits")
 {
     BandHarness h(false);

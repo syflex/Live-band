@@ -16,7 +16,8 @@ namespace lb
 // Starting by tapping: four steady taps, and the band comes in on the fifth, on the beat the
 // taps predict, with the output latency taken off so that the downbeat is heard when the
 // fifth tap lands. Tapping while the band plays (four taps or more) pulls it onto the
-// tapped tempo and beat, gradually.
+// tapped tempo and beat within a bar, by playing that bar a little faster or slower.
+// The nudge keys change the tempo by 1% at a time.
 //
 // Key: the controller listens to the singer through the analysis frames, and the key the
 // estimator locks goes to the band, which changes key on its next downbeat. A band started
@@ -27,7 +28,8 @@ namespace lb
 // for the next song.
 //
 // MIDI: any note-on, or the sustain pedal (CC 64) or CC 80 going down, is a tap; CC 81
-// starts and stops, CC 82 goes to the next section, CC 83 plays a fill.
+// starts and stops, CC 82 goes to the next section, CC 83 plays a fill, CC 84 and CC 85
+// nudge the tempo down and up.
 //
 // Message thread only.
 class BandController
@@ -56,6 +58,8 @@ public:
     // The tempo the band starts at without tapping, and plays at if it is running.
     void setTempoBpm(double bpm);
     double tempoBpm() const noexcept { return bpm_; }
+    static constexpr double nudgeRatio = 0.01;
+    void nudgeTempo(int steps); // +1: 1% faster, -1: back down by the same ratio
 
     // Taps in the current run, for "tap 2 of 4". Zero after a pause.
     int tapCount() const;

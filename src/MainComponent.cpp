@@ -186,7 +186,8 @@ MainComponent::MainComponent()
     addAndMakeVisible(pitchView_);
 
     hint_.setText("Band keys: Space taps the beat (four taps start the band), Enter starts or stops, N next section, F fill, "
-                  "Esc stops at once. A MIDI pedal or pad taps too. Key: K locks it (or listens again), Up/Down a semitone, M relative.\n"
+                  "Esc stops at once, Left/Right nudge the tempo 1%. A MIDI pedal or pad taps too. Key: K locks it (or listens again), "
+                  "Up/Down a semitone, M relative.\n"
                   "Keys 1 to 8 play test notes. Drop a WAV file here to use it as the voice. Use \"Hear my voice\" only with headphones.",
                   juce::dontSendNotification);
     hint_.setJustificationType(juce::Justification::topLeft);
@@ -378,6 +379,13 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
             band_.toggleRelativeKey();
         return true;
     }
+    if (key.getKeyCode() == leftKey_.keyCode || key.getKeyCode() == rightKey_.keyCode)
+    {
+        const bool faster = key.getKeyCode() == rightKey_.keyCode;
+        if (pressBandKey(faster ? rightKey_ : leftKey_))
+            band_.nudgeTempo(faster ? 1 : -1);
+        return true;
+    }
     if (key.getKeyCode() == upKey_.keyCode || key.getKeyCode() == downKey_.keyCode)
     {
         const bool up = key.getKeyCode() == upKey_.keyCode;
@@ -394,7 +402,7 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
 
 bool MainComponent::keyStateChanged(bool)
 {
-    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_ })
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_, &leftKey_, &rightKey_ })
         if (key->held && !juce::KeyPress::isKeyCurrentlyDown(key->keyCode))
             key->held = false;
 
@@ -417,7 +425,7 @@ bool MainComponent::keyStateChanged(bool)
 
 void MainComponent::focusLost(FocusChangeType)
 {
-    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_ })
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_, &leftKey_, &rightKey_ })
         key->held = false;
     for (std::size_t i = 0; i < testKeys.size(); ++i)
         if (std::exchange(testKeyDown_[i], false))
@@ -1114,7 +1122,7 @@ void MainComponent::setUpBandControls()
     bandBpmSlider_.setValue(band_.tempoBpm(), juce::dontSendNotification);
     bandBpmSlider_.setTextValueSuffix(" BPM");
     bandBpmSlider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 70, 22);
-    bandBpmSlider_.setTooltip("The band's tempo. Tapping sets it too.");
+    bandBpmSlider_.setTooltip("The band's tempo. Tapping sets it too; the Left and Right arrows nudge it by 1%.");
     bandBpmSlider_.setWantsKeyboardFocus(false);
     bandBpmSlider_.onValueChange = [this] { band_.setTempoBpm(bandBpmSlider_.getValue()); };
     addAndMakeVisible(bandBpmSlider_);

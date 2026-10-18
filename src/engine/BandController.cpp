@@ -1,5 +1,6 @@
 #include "engine/BandController.h"
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -108,6 +109,13 @@ void BandController::setTempoBpm(double bpm)
         return;
     bpm_ = bpm;
     engine_.setBandTempo(samplesPerBeat(bpm));
+}
+
+void BandController::nudgeTempo(int steps)
+{
+    // From the latest tempo asked for (taps update it too), so quick nudges add up before
+    // the audio thread has caught up; a step down and a step up cancel out.
+    setTempoBpm(std::clamp(bpm_ * std::pow(1.0 + nudgeRatio, steps), 30.0, 300.0));
 }
 
 int BandController::tapCount() const
@@ -225,6 +233,11 @@ bool BandController::handleMidi(const juce::MidiMessage& message)
         case 83:
             if (down)
                 fill();
+            return true;
+        case 84:
+        case 85:
+            if (down)
+                nudgeTempo(message.getControllerNumber() == 85 ? 1 : -1);
             return true;
         default:
             return false;
