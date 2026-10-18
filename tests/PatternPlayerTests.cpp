@@ -698,3 +698,25 @@ TEST_CASE("PatternPlayer: the ending hits sound in the key and every note is rel
     CHECK(r.layerNotes(bassLayer).back() == bassC - 2); // the final bass note, in Bb
     CHECK(r.balanced());
 }
+
+TEST_CASE("PatternPlayer reports the tempo it will start at while stopped, and the last tempo after it stops")
+{
+    const auto style = makeStyle();
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    CHECK(player.bpm() == Approx(120.0)); // the style's default
+    player.setTempo(rate * 60.0 / 100.0);
+    CHECK(player.bpm() == Approx(100.0));
+
+    player.start(0, rate * 60.0 / 100.0, 0, 0);
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, 48000);
+    player.setTempo(rate * 60.0 / 110.0);
+    r.run(player, t, 96000);
+    player.stopNow();
+    r.run(player, t, 96256);
+    CHECK(player.state() == lb::BandState::stopped);
+    CHECK(player.bpm() == Approx(110.0));
+}

@@ -554,9 +554,10 @@ TEST_CASE("Band: the callback does not allocate while the band plays, and the li
 
 // Not run by default (about 30 minutes of audio; under a minute in Release):
 //   liveband_engine_tests "[soak]"
-// Measures how long each callback takes with the full kit, the band changing section and
-// filling every 30 seconds, and the voice analysis running on a voice file, as fast as the
-// machine allows. A callback slower than its 2.7 ms of audio would be an overrun.
+// Measures how long each callback takes with the full band (drums, percussion, bass, piano
+// and pad), the band changing section and filling every 30 seconds and key every 5 minutes,
+// and the voice analysis running on a voice file, as fast as the machine allows. A callback
+// slower than its 2.7 ms of audio would be an overrun.
 //
 // It checks the engine's sustained cost and reports, without failing on them, the rare
 // callbacks over budget: on a shared or virtual machine even a loop doing identical work
@@ -564,7 +565,7 @@ TEST_CASE("Band: the callback does not allocate while the band plays, and the li
 // that matters is the app's own, on the laptop.
 TEST_CASE("Band soak: 30 minutes of band, voice file and analysis", "[.soak]")
 {
-    BandHarness h;
+    BandHarness h(true, true);
     h.keepOutput = false;
     std::vector<float> seconds;
     seconds.reserve(700000);
@@ -582,6 +583,7 @@ TEST_CASE("Band soak: 30 minutes of band, voice file and analysis", "[.soak]")
 
     h.runUntil(0.5);
     h.controller.setTempoBpm(104.0);
+    h.controller.setKey(lb::Key { 7, false });
     h.controller.startStop();
     h.callbackSeconds = &seconds;
     constexpr double minutes = 30.0;
@@ -592,8 +594,11 @@ TEST_CASE("Band soak: 30 minutes of band, voice file and analysis", "[.soak]")
             h.controller.next();
         else
             h.controller.fill();
+        if (static_cast<int>(t) % 300 == 0)
+            h.controller.shiftKey(5);
     }
     REQUIRE(h.engine.bandStatus().state == lb::BandState::playing);
+    CHECK(h.engine.bandStatus().layers == 0b11111u);
 
     // Where in the music the slowest callbacks fell, for diagnosis.
     const double budget = blockSize / sampleRate;

@@ -37,6 +37,8 @@ struct BeatTick
     std::int16_t beat = 0;       // within the bar, from 0
     std::int16_t section = 0;
     std::uint8_t flags = 0;
+    std::int8_t key = -1;      // Key::index() of the key the band plays in; -1 without one
+    std::uint32_t layers = 0;  // the layers playing in this bar
     float bpm = 0.0f;
 };
 
@@ -115,7 +117,11 @@ public:
     Key key() const noexcept { return pendingKey_.isValid() ? pendingKey_ : key_; } // the latest key given
     Key playingKey() const noexcept { return key_; }
     std::uint32_t activeLayers() const noexcept { return arrangementMask_ & layerMask_; }
-    double samplesPerBeat() const noexcept { return state_ == BandState::waiting ? startSpb_ : clock_.samplesPerBeat(); }
+    // The tempo playing now; when stopped, the tempo the band will start at.
+    double samplesPerBeat() const noexcept
+    {
+        return state_ == BandState::waiting || state_ == BandState::stopped ? startSpb_ : clock_.samplesPerBeat();
+    }
     // Notes the player still has to release. Zero once the band has stopped.
     int sustainedNotes() const noexcept { return pendingCount_; }
     std::uint64_t droppedEvents() const noexcept { return droppedEvents_; }

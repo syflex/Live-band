@@ -121,7 +121,10 @@ void PatternPlayer::stop() noexcept
 void PatternPlayer::stopNow() noexcept
 {
     if (state_ == BandState::playing || state_ == BandState::ending)
+    {
         startSection_ = section_;
+        startSpb_ = clock_.samplesPerBeat();
+    }
     flushRequested_ = true;
     state_ = BandState::stopped;
     resetArrangement();
@@ -344,6 +347,8 @@ void PatternPlayer::render(std::int64_t blockStart, int numSamples) noexcept
             tick.beat = static_cast<std::int16_t>(beatInBar);
             tick.section = static_cast<std::int16_t>(section_);
             tick.bpm = static_cast<float>(bpm());
+            tick.key = static_cast<std::int8_t>(key_.index());
+            tick.layers = barKind_ == BarKind::countIn ? 0u : activeLayers();
             if (barKind_ == BarKind::countIn)
                 tick.flags |= BeatTick::countIn;
             if (barKind_ == BarKind::fill)
@@ -375,6 +380,7 @@ void PatternPlayer::render(std::int64_t blockStart, int numSamples) noexcept
     if (state_ == BandState::ending && b1 > static_cast<double>(endBar_) * bpb && pendingCount_ == 0)
     {
         state_ = BandState::stopped;
+        startSpb_ = clock_.samplesPerBeat();
         resetArrangement();
     }
 }
