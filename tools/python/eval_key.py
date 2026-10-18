@@ -20,6 +20,11 @@ Reference keys come from either:
                           give for the whole hand-annotated melody; other clips are skipped
 
   python tools/python/eval_key.py --analyzer <lb-analyze> --labels testdata/external/keyset/labels.csv
+
+With --check it fails if, for any profile, the estimator's own lock falls below a floor:
+locked on at least 65% of the clips, and exact, relative or a fifth away on at least 75% of
+those. These floors guard against regressions; they sit a little below what the shipped
+settings reach on vocadito (75% and 83%).
 """
 
 from __future__ import annotations
@@ -40,6 +45,8 @@ PROFILES = ["krumhansl-kessler", "aarden-essen", "temperley", "bellman-budge"]
 NOTE_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
 CHECKPOINTS = [1.0, 2.0, 3.0, 5.0]
 MARGINS = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4]
+CHECK_LOCKED = 0.65
+CHECK_COMPATIBLE = 0.75
 
 
 def key_name(index: int) -> str | None:
@@ -147,6 +154,7 @@ def main() -> int:
     parser.add_argument("--extra", default="", help="more lb-analyze options, e.g. \"--phrase-bonus 2\"")
     parser.add_argument("--json", type=Path)
     parser.add_argument("--per-file", action="store_true")
+    parser.add_argument("--check", action="store_true", help="fail below the lock floors")
     args = parser.parse_args()
 
     if args.labels:
@@ -242,6 +250,17 @@ def main() -> int:
 
     if args.json:
         args.json.write_text(json.dumps(results, indent=2))
+
+    if args.check:
+        failed = False
+        for profile, summary in results.items():
+            lock = summary["all"]["auto_lock"]
+            compatible = lock["compatible"] or 0.0
+            ok = lock["reached"] >= CHECK_LOCKED and compatible >= CHECK_COMPATIBLE
+            failed = failed or not ok
+            print(f"\ncheck {profile}: locked {lock['reached']:.0%} (floor {CHECK_LOCKED:.0%}), "
+                  f"exact, relative or fifth {compatible:.0%} (floor {CHECK_COMPATIBLE:.0%}): {'ok' if ok else 'FAILED'}")
+        return 1 if failed else 0
     return 0
 
 

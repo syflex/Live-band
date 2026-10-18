@@ -300,6 +300,15 @@ dominates.
    estimate keeps running and appears in the UI.
 6. **Overrides:** key presses (or pedal commands) shift the key by ±1 semitone,
    toggle major/minor, and unlock the key.
+7. *As built in Phase 3:* the profile is Temperley's (it won on both test sets, see
+   [PHASE3_RESULTS.md](results/PHASE3_RESULTS.md)). The key locks **by itself once it is
+   clear**, not when the band enters: the best key's correlation must lead the second's
+   by a margin that relaxes from 0.25 to 0.1 between 2 and 10 s of voice, and the band
+   follows the locked key, changing on its next downbeat. The overrides are ±1
+   semitone, **relative** major/minor (C major and A minor share their notes, so that is
+   the common mistake, not C major and C minor), lock now, and "listen again". The
+   estimator runs on the message thread (`BandController`), fed by the analysis frames;
+   it costs nothing on the audio thread. After the band stops it listens afresh.
 
 ### 4.5 `TapTempo` (engine thread)
 - Taps are stored on the timeline. The tap buffer resets after a gap longer
@@ -394,6 +403,10 @@ picked up.
     bar 5, bass on bar 9. A key press (or pedal) can advance a stage early.
   - If the key is not yet known: drums first, then pad and bass at the next
     4-bar boundary after the key locks.
+  - *As built in Phase 3:* both plans are in `style.json` (`stagedEntry`); without a
+    key, the bass, keys and pad all join at the boundary. Drums coming in after bar 1
+    bring the entry crash. Advancing a stage early by hand is not built yet. Fills
+    replace only the style's `fillLayers` (drums and percussion); the harmony carries on.
 - **Section change:** pressing "next" queues the change. A drum fill replaces
   the last bar of the current 4-bar phrase, and the new section starts on the
   next phrase boundary.
@@ -606,22 +619,39 @@ Results: [docs/results/PHASE2_RESULTS.md](results/PHASE2_RESULTS.md).
     with no real-time priority, where the running app had 45 overruns in 678,738
     callbacks. To repeat on the laptop.
 
-### Phase 3: Key and layering (week 3)
-- [ ] `NoteSegmenter`, the tuning offset, the histogram, the three or four key
-      profiles, the margin and confidence, the lock logic, and the UI.
-- [ ] `eval_key.py`: accuracy against time-to-decision over the test set.
-      Choose the profile and thresholds from it.
-- [ ] Bass, keys/pad and percussion kits. Transposition with the register rule.
-      Selection of the major or minor variant.
-- [ ] The `Arranger` state machine, staged entry, and layer changes at bar
-      boundaries.
-- [ ] Manual key overrides.
+### Phase 3: Key and layering (week 3) — built; laptop checks pending
+Results: [docs/results/PHASE3_RESULTS.md](results/PHASE3_RESULTS.md).
+
+- [x] `NoteSegmenter`, the tuning offset, the histogram, four key profiles
+      (Krumhansl–Kessler, Aarden–Essen, Temperley, Bellman–Budge), the margin and
+      confidence, the lock logic, and the UI (the Key row).
+- [x] `eval_key.py`: accuracy against seconds of voice, and the estimator's own lock,
+      on a synthetic test set of 200 sung hymn and folk melodies
+      (`make_key_testset.py`) and on vocadito. Temperley's profile chosen.
+- [x] Bass (sfizz oscillators), piano (VCSL Kawai, CC0) and pad (sfizz oscillators),
+      built by `make_band_kits.py`, levelled against the drums and tuned by measurement.
+      Transposition by -6 to +5 semitones (the register rule). The minor version of a
+      section in minor keys. The Afrobeats parts in C major and C minor over four-bar
+      progressions. **To be reviewed by a Nigerian musician.**
+- [x] Staged entry with and without a key, and key changes, at bar boundaries (in
+      `PatternPlayer`; a separate `Arranger` was not needed).
+- [x] Manual key overrides: ±1 semitone, relative major/minor, lock, listen again.
+- [x] `lb-render` plays the pitched instruments, with a key at the start or later.
 - **Exit:**
   - **Exact key correct on at least 80% of test clips, using the first 3 s of
-    voiced singing.** Report the MIREX weighted score as well, for diagnosis.
-  - Staged entry works live.
-  - Transposed bass and keys stay in their registers.
-  - No hanging notes on transposition or section changes.
+    voiced singing:** **not met**: 62% of the synthetic clips and 42% of vocadito
+    (MIREX 0.69 and 0.46). When the key locks (median 5.6 s of voice), it is exact on
+    82% and exact, relative or a fifth away on 96% of the synthetic clips (vocadito:
+    72% and 83%, median 7.9 s). The band starts without a key and brings the harmony
+    in after the lock, so the proposal is to judge the criterion at the lock: **at
+    least 80% exact and 95% compatible, median under 6 s**, re-tuned on Nigerian
+    recordings. For the owner to decide.
+  - Staged entry works live: **met** in the running app on the cloud machine,
+    measured from its output; to repeat on the laptop.
+  - Transposed bass and keys stay in their registers: **met** (bass D1 to C4, piano
+    E3 to Eb5, pad Ab2 to Bb4 in every key).
+  - No hanging notes on transposition or section changes: **met** (unit and engine
+    tests, `lb-render`).
 
 ### Phase 4: Feel, control and the 6/8 style (week 4)
 - [ ] Vocal loudness drives velocity, fills and the intense variant.
@@ -666,7 +696,7 @@ following is outside this estimate.
 |-----------|--------|------|
 | Round-trip latency < 15 ms | In-app loopback chirp tester (median of 10 runs), checked against RTL Utility, on the reference laptop with ASIO | < 15 ms |
 | Key within 3 s | Live: time from the first voiced frame to the provisional key in the session log | ≤ 3 s |
-| Key ≥ 80% correct | `lb-analyze` on `testdata/`, first 3 s of voiced singing, exact match | ≥ 80% of clips |
+| Key ≥ 80% correct | `lb-analyze` on `testdata/`, first 3 s of voiced singing, exact match (proposed in Phase 3: at the estimator's lock, ≥ 80% exact and ≥ 95% exact, relative or a fifth away) | ≥ 80% of clips |
 | Tap locks instantly | A script sends MIDI taps; the loopback recording measures the band's first downbeat against the regression prediction | Entry error < 10 ms, tempo error < 0.5% |
 | Follow ±5% drift | **Deferred** (section 0). If the stretch goal is attempted: `eval_beats.py` on ramp clips and session recordings | ≥ 90% of beats within ±40 ms after 4 bars |
 | Re-tap during playback | Session log: time from the fourth re-tap to the new tempo taking effect | At the next bar, no hanging notes |

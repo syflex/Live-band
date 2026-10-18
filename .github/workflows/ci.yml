@@ -19,14 +19,16 @@ jobs:
         with:
           arch: x64
 
-      - name: Cache the drum kit samples
+      - name: Cache the drum kit and piano samples
         uses: actions/cache@v4
         with:
-          path: assets/sfz/afro-kit/vcsl
-          key: vcsl-${{ hashFiles('assets/sfz/afro-kit/samples.json') }}
+          path: |
+            assets/sfz/afro-kit/vcsl
+            assets/sfz/keys/vcsl
+          key: vcsl-${{ hashFiles('assets/sfz/*/samples.json') }}
 
-      # The build copies the kit next to the app, so the download below is ready to play.
-      - name: Fetch the drum kit samples (CC0, Versilian Community Sample Library)
+      # The build copies the instruments next to the app, so the download below is ready to play.
+      - name: Fetch the drum kit and piano samples (CC0, Versilian Community Sample Library)
         run: python tools/python/fetch_assets.py
 
       - name: Configure
@@ -66,13 +68,15 @@ jobs:
           python3 tools/python/make_grooves.py
           git diff --exit-code -- assets/grooves
 
-      - name: Cache the drum kit samples
+      - name: Cache the drum kit and piano samples
         uses: actions/cache@v4
         with:
-          path: assets/sfz/afro-kit/vcsl
-          key: vcsl-${{ hashFiles('assets/sfz/afro-kit/samples.json') }}
+          path: |
+            assets/sfz/afro-kit/vcsl
+            assets/sfz/keys/vcsl
+          key: vcsl-${{ hashFiles('assets/sfz/*/samples.json') }}
 
-      - name: Fetch the drum kit samples (CC0, Versilian Community Sample Library)
+      - name: Fetch the drum kit and piano samples (CC0, Versilian Community Sample Library)
         run: python3 tools/python/fetch_assets.py
 
       - name: Configure
@@ -84,14 +88,16 @@ jobs:
       - name: Test
         run: ctest --preset linux-debug
 
-      - name: Render the groove through the full kit
+      - name: Render the full band, with the key arriving in bar 1 and changing in bar 5
         run: >
           out/build/linux-debug/lb-render_artefacts/Debug/lb-render
           --style assets/grooves/afrobeats --kit assets/sfz/afro-kit/afro-kit.sfz
-          --plan Verse:2,Chorus:2 --count-in --out afrobeats-check.wav
+          --bass assets/sfz/bass/synth-bass.sfz --keys assets/sfz/keys/piano.sfz
+          --pad assets/sfz/pad/warm-pad.sfz --key-at 1:Em --key-at 5:G
+          --plan Verse:4,Chorus:4 --count-in --out afrobeats-check.wav
 
   evaluation:
-    name: Pitch and onset accuracy on real singing (vocadito)
+    name: Pitch, onset and key accuracy on real singing (vocadito)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -136,6 +142,12 @@ jobs:
       - name: Onset accuracy (fails below the Phase 1 target)
         run: >
           python tools/python/eval_onsets.py --check --json onsets.json
+          --analyzer out/build/linux-release/lb-analyze_artefacts/Release/lb-analyze
+          --vocadito testdata/external/vocadito
+
+      - name: Key detection (fails below the regression floors)
+        run: >
+          python tools/python/eval_key.py --check --json key.json --profiles temperley
           --analyzer out/build/linux-release/lb-analyze_artefacts/Release/lb-analyze
           --vocadito testdata/external/vocadito
 

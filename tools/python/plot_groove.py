@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Draws a style's patterns as drum grids, one row per instrument and one column per
-sixteenth note, for musicians to review.
+"""Draws a style's drum and percussion patterns as grids, one row per instrument and one
+column per sixteenth note, for musicians to review. (plot_harmony.py draws the bass, piano
+and pad, from a render.)
 
   python tools/python/plot_groove.py --out docs/images/phase2/groove-afrobeats.png
 """
@@ -37,16 +38,17 @@ NAMES = {
 }
 ORDER = list(NAMES)
 
+# The drum grids as written; the patterns repeat them to match the four-bar harmony.
 PANELS = [
-    ("Verse", "verse.mid"),
-    ("Chorus", "chorus.mid"),
-    ("Verse fill", "fill-verse.mid"),
-    ("Chorus fill", "fill-chorus.mid"),
+    ("Verse", groove.VERSE),
+    ("Chorus", groove.CHORUS),
+    ("Verse fill", groove.FILL_VERSE),
+    ("Chorus fill", groove.FILL_CHORUS),
 ]
 
 
 def rows_of(pattern: dict) -> list[tuple[int, str, str]]:
-    rows = [(note, layer, grid) for layer, notes in pattern.items() for note, grid in notes.items()]
+    rows = [(note, layer, grid) for layer, notes in pattern.items() if isinstance(notes, dict) for note, grid in notes.items()]
     return sorted(rows, key=lambda r: ORDER.index(r[0]))
 
 
@@ -85,16 +87,16 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    rows = [len(rows_of(groove.PATTERNS[name])) for _, name in PANELS]
+    rows = [len(rows_of(pattern)) for _, pattern in PANELS]
     ratios = [rows[0], rows[1], max(rows[2:])]
     inches = 0.27 * sum(ratios) + 3.2  # rows plus titles, tick labels and the heading
     fig = plt.figure(figsize=(11, inches), dpi=150, facecolor=SURFACE)
     grid = fig.add_gridspec(3, 2, height_ratios=ratios, left=0.14, right=0.98, top=1 - 1.25 / inches, bottom=0.35 / inches,
                             hspace=0.9 / (0.27 * sum(ratios) / 3), wspace=0.28)
-    draw_panel(fig.add_subplot(grid[0, :]), "Verse (two bars)", groove.PATTERNS["verse.mid"])
-    draw_panel(fig.add_subplot(grid[1, :]), "Chorus (two bars)", groove.PATTERNS["chorus.mid"])
-    draw_panel(fig.add_subplot(grid[2, 0]), "Verse fill (one bar)", groove.PATTERNS["fill-verse.mid"])
-    draw_panel(fig.add_subplot(grid[2, 1]), "Chorus fill (one bar)", groove.PATTERNS["fill-chorus.mid"])
+    draw_panel(fig.add_subplot(grid[0, :]), "Verse (two bars)", groove.VERSE)
+    draw_panel(fig.add_subplot(grid[1, :]), "Chorus (two bars)", groove.CHORUS)
+    draw_panel(fig.add_subplot(grid[2, 0]), "Verse fill (one bar)", groove.FILL_VERSE)
+    draw_panel(fig.add_subplot(grid[2, 1]), "Chorus fill (one bar)", groove.FILL_CHORUS)
 
     style = groove.STYLE
     fig.text(0.14, 1 - 0.45 / inches, f"{style['name']} groove: every hit, by sixteenth note", color=INK, fontsize=15, fontweight="bold")

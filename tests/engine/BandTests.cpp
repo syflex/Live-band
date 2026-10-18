@@ -223,6 +223,29 @@ TEST_CASE("GrooveLoader reads the Afrobeats style")
     CHECK(at(1.5, 36) != notes.end()); // the "and" of 2
 }
 
+TEST_CASE("The Afrobeats harmony stays in its registers in every key")
+{
+    juce::String error;
+    const auto style = lb::loadStyle(afrobeats, error);
+    REQUIRE(style != nullptr);
+    // Bass from D1 to C4, piano from E3 to Eb5 (inside its samples, A2 to E6), pad from Ab2 to Bb4.
+    const std::pair<int, std::pair<int, int>> registers[] = { { bassLayer, { 26, 60 } }, { keysLayer, { 52, 75 } }, { padLayer, { 44, 70 } } };
+    for (int index = 0; index < 24; ++index)
+    {
+        const auto key = lb::Key::fromIndex(index);
+        const int shift = lb::PatternPlayer::transposition(key);
+        for (const auto& section : style->sections)
+            for (const auto& note : section.patternFor(key.minor).notes)
+                for (const auto& [layer, range] : registers)
+                    if (note.layer == layer)
+                    {
+                        INFO(key.name() << ", " << section.name << ", " << style->layers[static_cast<std::size_t>(layer)] << " note " << int { note.note });
+                        CHECK(note.note + shift >= range.first);
+                        CHECK(note.note + shift <= range.second);
+                    }
+    }
+}
+
 TEST_CASE("GrooveLoader explains what is wrong with a broken style")
 {
     juce::String error;

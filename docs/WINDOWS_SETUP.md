@@ -2,8 +2,9 @@
 
 This guide gets LiveBand running on the Lenovo laptop with the Jedel headset,
 walks through the Phase 0 measurements, shows the Phase 1 features (the live
-note display, voice files and recording) and the Phase 2 band: drums and
-percussion that start when you tap the beat.
+note display, voice files and recording), the Phase 2 band (drums and
+percussion that start when you tap the beat) and Phase 3: the band hears the key
+you sing in and adds bass, piano and pad.
 
 ## 1. Get the app
 
@@ -16,8 +17,9 @@ percussion that start when you tap the beat.
 4. Double-click `LiveBand.exe`. Windows may warn that the app is unrecognised,
    because it is not signed. Click **More info**, then **Run anyway**.
 
-Keep the `assets` folder next to `LiveBand.exe`: the drum kit, the grooves and the
-test instrument live there. The download already includes the whole drum kit.
+Keep the `assets` folder next to `LiveBand.exe`: the drum kit, the bass, piano and
+pad, the grooves and the test instrument live there. The download already includes
+all their samples.
 
 ### Option B: build it yourself
 
@@ -26,7 +28,7 @@ test instrument live there. The download already includes the whole drum kit.
    Ninja.
 2. Install [Git for Windows](https://git-scm.com/download/win).
 3. Install [Python 3](https://www.python.org/downloads/) (tick **Add python.exe
-   to PATH**). It is only needed to download the drum samples.
+   to PATH**). It is only needed to download the drum and piano samples.
 4. In a terminal:
 
    ```
@@ -35,9 +37,9 @@ test instrument live there. The download already includes the whole drum kit.
    python tools/python/fetch_assets.py
    ```
 
-   The last command downloads the drum and percussion samples (41 MB, free CC0
-   samples from the Versilian Community Sample Library). Without them only the kick
-   plays, and the app says so.
+   The last command downloads the drum, percussion and piano samples (81 MB, free
+   CC0 samples from the Versilian Community Sample Library). Without them only the
+   kick plays and the piano is silent, and the app says so.
 
 5. In Visual Studio: **File → Open → Folder…** and choose the `Live-band`
    folder. Wait for CMake to finish.
@@ -178,12 +180,51 @@ This checks, on the real laptop, that the band comes in on the fifth beat:
    10 ms. Keyboards take some milliseconds to report a key press, so a consistent
    lateness here measures the keyboard rather than the band.
 
-## 7. What to send back
+## 7. Sing the key in (Phase 3)
+
+![The app after a few seconds of singing in G major: the key is locked](images/phase3/app-key-locked.png)
+
+The **Key** row shows what the app hears in your singing and the key the band plays.
+Use the microphone (**Voice: Microphone**) and the headset, so the band does not leak
+into the mic.
+
+1. **Sing first, then start.** With the band stopped, sing the opening of a song you
+   know. After about 2 seconds the row says **Hearing ...** with how sure it is; once
+   it is sure, it says **... locked**, usually within 3 to 8 seconds. It also shows how
+   far your tuning is from A440; that is fine, the app allows for it. Then tap four
+   times (or press Enter). With the key known, the band comes in gently: pad and piano
+   first, the drums 4 bars later, the bass 4 bars after that.
+2. **Or start first, then sing.** Tap the band in before you sing: the drums and
+   percussion play alone, and the bass, piano and pad come in on the first 4-bar
+   boundary after the key locks.
+3. **If the key is wrong:**
+   - **Up** / **Down** arrows (or **+1** / **-1**) move it a semitone.
+   - **M** (or **Relative minor** / **Relative major**) swaps, for example, C major and
+     A minor: the most common mistake, because both use the same notes.
+   - **K** (or **Listen again**) makes the app forget what it heard and listen afresh;
+     the band keeps its key until the new one locks. When the key is not locked yet,
+     **K** locks what it hears now.
+
+   Every change takes effect on the band's next downbeat.
+4. **Bass**, **Keys** and **Pad** switch those parts on and off. **Band volume** now sets
+   the whole band.
+5. When the band stops, the app listens afresh for the next song.
+
+Please try it on several songs, worship songs and Afrobeats, men's and women's voices
+if you can, and note for each: the key it locked, the right key, and roughly how long
+it took. Record a few of them (**Record**): the recordings stay on the laptop, and
+`input.wav` lets the key detection be re-tuned on real Nigerian singing later. Please
+do not put them in the GitHub repository; it is public.
+
+## 8. What to send back
 
 - The copied report, taken at the smallest buffer that works without crackles, with
-  the band playing.
+  the full band playing (pad, piano and bass in).
 - How the band felt: did it come in where you expected after four taps? Did the
   Afrobeats groove sound right? What would a Nigerian drummer change?
+- For Phase 3: the songs you tried, the key the app locked and the right key, how
+  long it took, and whether the bass, piano and pad parts sound right for the style.
+  What would a Nigerian keyboardist change?
 - Whether you heard crackles, or an echo of your own voice with **Hear my
   voice** on.
 - The LatencyMon verdict.
@@ -199,5 +240,7 @@ This checks, on the real laptop, that the band comes in on the fifth beat:
 | Buffer | 128 samples or less | Smaller means less latency but more risk of crackles. |
 | Audio callback load | under 30 % average | How much of each buffer's time the app needs for its audio work. |
 | Overruns | 0 | Times the app was too slow and the sound had a gap. |
+| Key | | The key the band plays, and the key the app hears in your singing, with how sure it is. |
+| Singer's tuning | anything | How far your singing is from A440, in cents. The key detection allows for it. |
 | Driver-reported dropouts | 0 | Gaps the driver noticed. Some drivers do not report this. |
 | Real-time allocations | 0 | Debug builds only: memory allocations in the audio thread, which must never happen. |
