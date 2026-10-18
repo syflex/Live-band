@@ -65,6 +65,22 @@ void PatternPlayer::setDynamics(float velocityScale, bool intense) noexcept
         intense_ = intense;
 }
 
+void PatternPlayer::advanceEntry() noexcept
+{
+    if (state_ != BandState::playing || currentBar_ == noBar)
+        return;
+    const int nextBar = std::max(currentBar_ + 1, 0);
+    int earliest = -1;
+    for (int i = 0; i < stageCount_; ++i)
+    {
+        const auto& stage = stages_[static_cast<std::size_t>(i)];
+        if (stage.bar > nextBar && (earliest < 0 || stage.bar < stages_[static_cast<std::size_t>(earliest)].bar))
+            earliest = i;
+    }
+    if (earliest >= 0)
+        stages_[static_cast<std::size_t>(earliest)].bar = nextBar;
+}
+
 std::uint32_t PatternPlayer::arrangementFor(int bar) const noexcept
 {
     std::uint32_t mask = stageCount_ == 0 ? ~0u : 0u;

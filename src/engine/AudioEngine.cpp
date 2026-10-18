@@ -116,6 +116,7 @@ void AudioEngine::pushBandCommand(Command::Type type) noexcept
 }
 
 void AudioEngine::stopBand() noexcept { pushBandCommand(Command::Type::stopBand); }
+void AudioEngine::advanceBandEntry() noexcept { pushBandCommand(Command::Type::advanceEntry); }
 void AudioEngine::stopBandNow() noexcept { pushBandCommand(Command::Type::stopBandNow); }
 void AudioEngine::nextSection() noexcept { pushBandCommand(Command::Type::nextSection); }
 void AudioEngine::fill() noexcept { pushBandCommand(Command::Type::fill); }
@@ -389,6 +390,7 @@ void AudioEngine::applyCommands() noexcept
                 break;
             case Command::Type::setBandKey:    player_.setKey(Key::fromIndex(command.keyIndex)); break;
             case Command::Type::setDynamics:   player_.setDynamics(command.velocityScale, command.intense); break;
+            case Command::Type::advanceEntry:  player_.advanceEntry(); break;
             case Command::Type::stopBand:      player_.stop(); break;
             case Command::Type::stopBandNow:   player_.stopNow(); break;
             case Command::Type::nextSection:   player_.nextSection(); break;

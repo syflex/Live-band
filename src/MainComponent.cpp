@@ -187,7 +187,7 @@ MainComponent::MainComponent()
     addAndMakeVisible(noteDisplay_);
     addAndMakeVisible(pitchView_);
 
-    hint_.setText("Band keys: Space taps the beat (four taps start the band), Enter starts or stops, N next section, F fill, "
+    hint_.setText("Band keys: Space taps the beat (four taps start the band), Enter starts or stops, N next section, F fill, A brings the next parts in, "
                   "Esc stops at once, Left/Right nudge the tempo 1%. In 6/8, tap the two beats of each bar. A MIDI pedal or pad taps too. "
                   "Key: K locks it (or listens again), Up/Down a semitone, M relative.\n"
                   "Keys 1 to 8 play test notes. Drop a WAV file here to use it as the voice. Use \"Hear my voice\" only with headphones.",
@@ -374,6 +374,12 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
             band_.fill();
         return true;
     }
+    if (character == bringInKey_.keyCode && !key.getModifiers().isAnyModifierKeyDown())
+    {
+        if (pressBandKey(bringInKey_))
+            band_.bringInNext();
+        return true;
+    }
     if (character == lockKey_.keyCode && !key.getModifiers().isAnyModifierKeyDown())
     {
         if (pressBandKey(lockKey_))
@@ -409,7 +415,7 @@ bool MainComponent::keyPressed(const juce::KeyPress& key)
 
 bool MainComponent::keyStateChanged(bool)
 {
-    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_, &leftKey_, &rightKey_ })
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_, &leftKey_, &rightKey_, &bringInKey_ })
         if (key->held && !juce::KeyPress::isKeyCurrentlyDown(key->keyCode))
             key->held = false;
 
@@ -432,7 +438,7 @@ bool MainComponent::keyStateChanged(bool)
 
 void MainComponent::focusLost(FocusChangeType)
 {
-    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_, &leftKey_, &rightKey_ })
+    for (auto* key : { &spaceKey_, &returnKey_, &nextKey_, &fillKey_, &lockKey_, &relativeKey_, &upKey_, &downKey_, &leftKey_, &rightKey_, &bringInKey_ })
         key->held = false;
     for (std::size_t i = 0; i < testKeys.size(); ++i)
         if (std::exchange(testKeyDown_[i], false))

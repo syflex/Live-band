@@ -206,6 +206,7 @@ private:
     BandKey relativeKey_ { 'm' };
     BandKey upKey_ { juce::KeyPress::upKey };
     BandKey downKey_ { juce::KeyPress::downKey };
+    BandKey bringInKey_ { 'a' };
     BandKey leftKey_ { juce::KeyPress::leftKey };
     BandKey rightKey_ { juce::KeyPress::rightKey };
     int ticksUntilMidiScan_ = 0;

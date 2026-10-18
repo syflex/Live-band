@@ -110,6 +110,7 @@ public:
     void steerBand(std::int64_t sample, double samplesPerBeat) noexcept; // a beat falls on `sample`
     void setBandKey(const Key& key) noexcept; // from the next downbeat
     void setBandDynamics(float velocityScale, bool intense) noexcept;
+    void advanceBandEntry() noexcept; // the next staged-entry step on the next downbeat
     void setLayerEnabled(int layer, bool enabled) noexcept;
     bool isLayerEnabled(int layer) const noexcept { return (layerMask_.load() & (1u << layer)) != 0; }
     void setPartGain(BandPart part, float linearGain) noexcept { parts_[static_cast<std::size_t>(part)].gain.store(linearGain); }
@@ -196,7 +197,8 @@ private:
             steerBand,
             setLayerMask,
             setBandKey,
-            setDynamics
+            setDynamics,
+            advanceEntry
         };
 
         Type type = Type::noteOn;

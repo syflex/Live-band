@@ -100,6 +100,8 @@ public:
     void setLayerMask(std::uint32_t mask) noexcept { layerMask_ = mask; }
     void setKey(const Key& key) noexcept; // from the next downbeat when playing
     void setDynamics(float velocityScale, bool intense) noexcept;
+    // The next step of the staged entry comes in on the next downbeat instead of later.
+    void advanceEntry() noexcept;
 
     // How far the pitched layers move for a key: -6 to +5 semitones from C.
     static int transposition(const Key& key) noexcept { return key.isValid() ? (key.tonic + 6) % 12 - 6 : 0; }

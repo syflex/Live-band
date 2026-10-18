@@ -88,13 +88,21 @@ jobs:
       - name: Test
         run: ctest --preset linux-debug
 
-      - name: Render the full band, with the key arriving in bar 1 and changing in bar 5
+      - name: Render the full band, with the key arriving in bar 1 and changing in bar 5, and loud singing in bars 6 to 8
         run: >
           out/build/linux-debug/lb-render_artefacts/Debug/lb-render
           --style assets/grooves/afrobeats --kit assets/sfz/afro-kit/afro-kit.sfz
           --bass assets/sfz/bass/synth-bass.sfz --keys assets/sfz/keys/piano.sfz
-          --pad assets/sfz/pad/warm-pad.sfz --key-at 1:Em --key-at 5:G
+          --pad assets/sfz/pad/warm-pad.sfz --key-at 1:Em --key-at 5:G --intense 6-8
           --plan Verse:4,Chorus:4 --count-in --out afrobeats-check.wav
+
+      - name: Render the worship style in 6/8, through the drums coming in (bar 8) and loud singing in bars 9 and 10
+        run: >
+          out/build/linux-debug/lb-render_artefacts/Debug/lb-render
+          --style assets/grooves/worship-6-8 --kit assets/sfz/afro-kit/afro-kit.sfz
+          --bass assets/sfz/bass/synth-bass.sfz --keys assets/sfz/keys/piano.sfz
+          --pad assets/sfz/pad/warm-pad.sfz --key Bbm --intense 9-11
+          --plan Verse:4,Chorus:8 --count-in --out worship-check.wav
 
   evaluation:
     name: Pitch, onset and key accuracy on real singing (vocadito)

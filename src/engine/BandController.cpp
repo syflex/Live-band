@@ -98,6 +98,11 @@ void BandController::fill()
     engine_.fill();
 }
 
+void BandController::bringInNext()
+{
+    engine_.advanceBandEntry();
+}
+
 void BandController::selectSection(int section)
 {
     engine_.selectSection(section);
@@ -258,6 +263,10 @@ bool BandController::handleMidi(const juce::MidiMessage& message)
         case 83:
             if (down)
                 fill();
+            return true;
+        case 86:
+            if (down)
+                bringInNext();
             return true;
         case 84:
         case 85:

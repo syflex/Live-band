@@ -33,7 +33,7 @@ namespace lb
 //
 // MIDI: any note-on, or the sustain pedal (CC 64) or CC 80 going down, is a tap; CC 81
 // starts and stops, CC 82 goes to the next section, CC 83 plays a fill, CC 84 and CC 85
-// nudge the tempo down and up.
+// nudge the tempo down and up, CC 86 brings in the next layers of the staged entry.
 //
 // Message thread only.
 class BandController
@@ -57,6 +57,7 @@ public:
     void stopNow();
     void next();
     void fill();
+    void bringInNext(); // the next step of the staged entry, on the next downbeat
     void selectSection(int section);
 
     // The tempo the band starts at without tapping, and plays at if it is running.

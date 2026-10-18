@@ -784,3 +784,25 @@ TEST_CASE("PatternPlayer starts the intense variation on the next downbeat with 
     CHECK((r.ticks[4].flags & lb::BeatTick::intense) != 0);
     CHECK((r.ticks[12].flags & lb::BeatTick::intense) == 0);
 }
+
+TEST_CASE("PatternPlayer: advancing the staged entry brings the next step in on the next downbeat")
+{
+    auto style = makeHarmonicStyle();
+    style.entryKeyKnown = { { 0, 1u << padLayer }, { 4, 0b0011u }, { 8, 1u << bassLayer } };
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    constexpr double spb = 24000.0;
+    const auto bar = [&](double b) { return static_cast<std::int64_t>(b * 4 * spb); };
+    player.start(0, spb, 0, 0, key(0));
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, bar(1.5));
+    player.advanceEntry(); // the drums come in on bar 2 instead of bar 4
+    r.run(player, t, bar(2.5));
+    player.advanceEntry(); // and the bass on bar 3 instead of bar 8
+    r.run(player, t, bar(4));
+    CHECK(r.onsOf(kick, 0).front() == bar(2));
+    CHECK(r.onsOf(crash).front() == bar(2)); // with the entry crash
+    CHECK(r.firstOn(bassLayer) == bar(3));
+}
