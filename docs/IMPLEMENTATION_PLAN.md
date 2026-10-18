@@ -448,7 +448,8 @@ picked up.
     percentile switch to the intense variation on the next downbeat, with the entry
     crash; two bars below the 60th, or without singing, switch back on a downbeat. Both
     styles have intense variations of the verse and chorus. The count-in is never scaled.
-    "Follow my voice" switches it off.
+    "Follow my voice" switches it off. Another voice (microphone or file) starts a new
+    distribution.
 
 ### 4.9 `SfizzInstrument`, `Mixer`, `AudioEngine`
 - **`SfizzInstrument`** implements the small `Instrument` interface:

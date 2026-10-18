@@ -91,6 +91,9 @@ public:
     void setDynamicsEnabled(bool enabled);
     bool dynamicsEnabled() const noexcept { return dynamicsEnabled_; }
     const VocalDynamics& dynamics() const noexcept { return dynamics_; }
+    // Another voice (the microphone, or another file): its loudness is judged against its
+    // own range, from scratch, and the band plays as written until it has heard enough.
+    void voiceChanged();
 
 private:
     double samplesPerBeat(double bpm) const;

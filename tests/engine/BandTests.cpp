@@ -598,6 +598,16 @@ TEST_CASE("Band: louder singing makes the band play harder and turn intense; off
     status = h.engine.bandStatus();
     CHECK(status.velocityScale == 1.0f);
     CHECK_FALSE(status.intense);
+
+    // Another voice is judged against its own range, from scratch: as written until the
+    // follower has heard enough of it.
+    h.controller.setDynamicsEnabled(true);
+    h.controller.voiceChanged();
+    h.runUntil(42.0);
+    status = h.engine.bandStatus();
+    CHECK(status.velocityScale == 1.0f);
+    CHECK_FALSE(status.intense);
+    CHECK(h.controller.dynamics().voicedSeconds() < 4.0);
 }
 
 TEST_CASE("Band: the nudge keys change the tempo by 1% without moving the beat")

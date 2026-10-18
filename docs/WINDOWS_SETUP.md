@@ -232,6 +232,7 @@ do not put them in the GitHub repository; it is public.
    and it switches to a fuller version (the band line says **full**) with a crash; sing
    quietly and it plays softer, back to normal after two quieter bars. The text beside
    the switch says what it is doing. Switch it off to have the band play as written.
+   Switching between the microphone and a voice file starts it afresh.
 3. **Nudge the tempo** with the **Left** and **Right** arrows: 1% slower or faster each
    press, without moving the beat (MIDI controllers 84 and 85).
 4. **Re-tap while it plays:** four taps on your beat pull the band onto it within one

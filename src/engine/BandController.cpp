@@ -153,6 +153,12 @@ void BandController::setDynamicsEnabled(bool enabled)
     sendDynamics(true);
 }
 
+void BandController::voiceChanged()
+{
+    dynamics_.reset();
+    sendDynamics(true);
+}
+
 void BandController::sendDynamics(bool force)
 {
     const auto scale = dynamicsEnabled_ ? static_cast<float>(dynamics_.velocityScale()) : 1.0f;

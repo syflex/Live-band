@@ -34,7 +34,8 @@ sound device. The laptop checks are in [WINDOWS_SETUP.md](../WINDOWS_SETUP.md), 
 - **Follow my voice** on the Parts row (on by default, remembered) makes the band follow how
   loud the singer is. The text beside it says what it does: *Listening to how loud you
   sing...* for the first 8 seconds of singing, then for example *The band plays 12% harder,
-  full: you are singing out*, or *Off: the band plays as written*.
+  full: you are singing out*, or *Off: the band plays as written*. Switching between the
+  microphone and a voice file, or loading another file, starts it afresh.
 - **Left** and **Right** nudge the tempo 1% slower or faster (MIDI controllers 84 and 85).
   Stopped, they change the tempo the band will start at.
 - **Re-tapping** while the band plays pulls it onto the new beat within one bar.
@@ -60,7 +61,8 @@ How it works (`VocalDynamics`, on the message thread, from the voice analysis):
   service. Each moment counts as a spread of 3 dB around its level, so that a very even
   singer's small wobbles do not swing the band: it takes a few dB. Until 8 seconds of
   singing it stays neutral, and without singing it relaxes back to neutral. Breaths
-  shorter than a second change nothing.
+  shorter than a second change nothing. Another voice (the microphone instead of a file,
+  or another file) starts a new distribution, so that their levels do not mix.
 - **Velocity:** every note but the count-in's is scaled from ×0.8 for the singer's quietest,
   through ×1 at their usual level (the 50th percentile), to ×1.15 for their loudest.
 - **The intense variation:** after two bars above the 80th percentile, the band switches
@@ -223,8 +225,8 @@ machine's (the control loop has them too, 35 over budget); the laptop soak decid
   included) and calms down after two quiet bars or silence; the player scales velocities
   but not the count-in, and starts and ends the intense variation on downbeats, with a
   crash at the start only; in the engine, a voice that gets 12 dB louder makes the band
-  play harder and turn intense, and switching the follower off brings it back to the
-  written parts.
+  play harder and turn intense, switching the follower off brings it back to the written
+  parts, and another voice starts from scratch.
 - **6/8:** the loader reads the worship style in dotted quarters; the engine plays it in
   time from four taps with its staged entry and the bass in the key; the register test
   covers both styles.

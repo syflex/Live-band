@@ -136,7 +136,12 @@ MainComponent::MainComponent()
         addAndMakeVisible(button);
     }
     micButton_.setToggleState(true, juce::dontSendNotification);
-    micButton_.onClick = [this] { engine_.setInputSource(lb::AudioEngine::InputSource::microphone); updateControls(); };
+    micButton_.onClick = [this] {
+        if (engine_.inputSource() != lb::AudioEngine::InputSource::microphone)
+            band_.voiceChanged();
+        engine_.setInputSource(lb::AudioEngine::InputSource::microphone);
+        updateControls();
+    };
     fileButton_.onClick = [this] {
         if (!engine_.hasFileInput())
         {
@@ -144,6 +149,8 @@ MainComponent::MainComponent()
             chooseVoiceFile();
             return;
         }
+        if (engine_.inputSource() != lb::AudioEngine::InputSource::file)
+            band_.voiceChanged();
         engine_.setInputSource(lb::AudioEngine::InputSource::file);
         updateControls();
     };
@@ -597,6 +604,7 @@ void MainComponent::useVoiceFile(const juce::File& file)
         properties_.getUserSettings()->setValue(voiceFolderKey, file.getParentDirectory().getFullPathName());
         fileButton_.setToggleState(true, juce::dontSendNotification);
         engine_.setInputSource(lb::AudioEngine::InputSource::file);
+        band_.voiceChanged();
     }
     updateControls();
 }
