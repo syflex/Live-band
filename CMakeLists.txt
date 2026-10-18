@@ -35,6 +35,7 @@ add_library(liveband_core STATIC
     src/music/BeatClock.cpp
     src/music/ClickTrack.cpp
     src/music/Groove.cpp
+    src/music/KeyEstimator.cpp
     src/music/PatternPlayer.cpp
     src/music/TapTempo.cpp)
 target_include_directories(liveband_core PUBLIC src)
@@ -63,6 +64,7 @@ if(LB_BUILD_TESTS)
         tests/ClickTrackTests.cpp
         tests/BeatClockTests.cpp
         tests/PatternPlayerTests.cpp
+        tests/KeyTests.cpp
         src/common/RtAllocGuardNew.cpp)
     target_link_libraries(liveband_tests PRIVATE liveband_core Catch2::Catch2WithMain liveband_warnings)
 
