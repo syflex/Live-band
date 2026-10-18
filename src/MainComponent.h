@@ -66,6 +66,10 @@ private:
 
     void setUpBandControls();
     void loadBand();
+    void chooseStyle(int index);
+    void applyLayerToggles();
+    int layerIndex(const char* name) const;
+    juce::String dynamicsText(const lb::AudioEngine::BandStatus& status) const;
     void updateBand();
     juce::String bandStatusText(const lb::AudioEngine::BandStatus& status) const;
     juce::String keyStatusText(const lb::AudioEngine::BandStatus& status) const;
@@ -112,6 +116,8 @@ private:
 
     // Band.
     juce::Label bandLabel_ { {}, "Band:" };
+    juce::ComboBox styleBox_;
+    std::vector<juce::File> styleFolders_;
     juce::TextButton startButton_ { "Start" };
     juce::TextButton tapButton_ { "Tap" };
     juce::Slider bandBpmSlider_;
@@ -123,6 +129,9 @@ private:
     juce::ToggleButton bassToggle_ { "Bass" };
     juce::ToggleButton keysToggle_ { "Keys" };
     juce::ToggleButton padToggle_ { "Pad" };
+    juce::Label partsLabel_ { {}, "Parts:" };
+    juce::ToggleButton dynamicsToggle_ { "Follow my voice" };
+    juce::Label dynamicsStatus_;
     juce::Label bandGainLabel_ { {}, "Band volume" };
     juce::Slider bandGainSlider_;
     BeatLamps beatLamps_;

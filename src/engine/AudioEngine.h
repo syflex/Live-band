@@ -50,6 +50,8 @@ public:
         double bpm = 0.0;
         Key key;                    // the key the band plays in now
         std::uint32_t layers = 0;   // the layers playing: staged entry and the layer switches
+        float velocityScale = 1.0f; // the singer's dynamics
+        bool intense = false;       // the intense variation is playing
     };
 
     // The band's instruments. A style's layers are routed by name: "bass", "keys" and "pad"
@@ -107,6 +109,7 @@ public:
     void setBandTempo(double samplesPerBeat) noexcept;
     void steerBand(std::int64_t sample, double samplesPerBeat) noexcept; // a beat falls on `sample`
     void setBandKey(const Key& key) noexcept; // from the next downbeat
+    void setBandDynamics(float velocityScale, bool intense) noexcept;
     void setLayerEnabled(int layer, bool enabled) noexcept;
     bool isLayerEnabled(int layer) const noexcept { return (layerMask_.load() & (1u << layer)) != 0; }
     void setPartGain(BandPart part, float linearGain) noexcept { parts_[static_cast<std::size_t>(part)].gain.store(linearGain); }
@@ -192,7 +195,8 @@ private:
             setBandTempo,
             steerBand,
             setLayerMask,
-            setBandKey
+            setBandKey,
+            setDynamics
         };
 
         Type type = Type::noteOn;
@@ -207,7 +211,10 @@ private:
         int countInBars = 0;
         std::uint32_t mask = 0;
         std::int8_t keyIndex = -1;
+        float velocityScale = 1.0f;
+        bool intense = false;
         std::array<BandPart, 32> routes {}; // with setStyle: the instrument of each layer
+        std::array<float, numBandParts> styleGains { 1.0f, 1.0f, 1.0f, 1.0f }; // and the style's mix
     };
 
     // One of the band's instruments, with its volume.
@@ -235,6 +242,8 @@ private:
     std::array<Part, numBandParts> parts_;
     std::array<BandPart, 32> layerRoutes_ {}; // audio thread
     std::array<BandPart, 32> nextLayerRoutes_ {};
+    std::array<float, numBandParts> styleGains_ { 1.0f, 1.0f, 1.0f, 1.0f };     // audio thread
+    std::array<float, numBandParts> nextStyleGains_ { 1.0f, 1.0f, 1.0f, 1.0f };
     bool routesChanged_ = false;
     std::vector<std::unique_ptr<Style>> styles_; // owned for the engine's lifetime
     const Style* style_ = nullptr;               // message thread's view
@@ -288,6 +297,8 @@ private:
     std::atomic<double> bandSamplesPerBeat_ { 0.0 };
     std::atomic<int> bandKey_ { -1 };
     std::atomic<std::uint32_t> bandLayers_ { 0 };
+    std::atomic<float> bandVelocityScale_ { 1.0f };
+    std::atomic<bool> bandIntense_ { false };
     std::atomic<std::int64_t> publishedSampleTime_ { 0 };
     std::atomic<std::int64_t> sessionStart_ { -1 };
 

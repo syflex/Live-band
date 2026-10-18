@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace lb
 {
@@ -76,11 +77,16 @@ std::string Style::validate() const
             return section.name + ": the fill must be one bar long";
         if (auto error = checkNotes(section.main.notes, section.main.lengthBeats, section.name); !error.empty())
             return error;
-        if (!section.mainMinor.notes.empty())
+        const std::pair<const Pattern*, const char*> variants[] = {
+            { &section.mainMinor, " minor" }, { &section.mainIntense, " intense" }, { &section.mainIntenseMinor, " intense minor" }
+        };
+        for (const auto& [variant, label] : variants)
         {
-            if (section.mainMinor.lengthBeats != section.main.lengthBeats)
-                return section.name + ": the minor pattern must be as long as the major one";
-            if (auto error = checkNotes(section.mainMinor.notes, section.mainMinor.lengthBeats, section.name + " minor"); !error.empty())
+            if (variant->notes.empty())
+                continue;
+            if (variant->lengthBeats != section.main.lengthBeats)
+                return section.name + label + ": the pattern must be as long as the main one";
+            if (auto error = checkNotes(variant->notes, variant->lengthBeats, section.name + label); !error.empty())
                 return error;
         }
         if (auto error = checkNotes(section.fill.notes, section.fill.lengthBeats, section.name + " fill"); !error.empty())

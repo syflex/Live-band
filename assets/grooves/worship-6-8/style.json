@@ -1,0 +1,184 @@
+{
+  "name": "Worship 6/8",
+  "description": "Nigerian worship in 6/8, led by the pad and piano: soft drums with a kick on 1 and a rim or snare on 4, shaker eighths, piano arpeggios in the verse.",
+  "timeSignature": [
+    6,
+    8
+  ],
+  "tempo": {
+    "default": 66,
+    "min": 50,
+    "max": 84
+  },
+  "swing": 0.5,
+  "layers": [
+    "drums",
+    "perc",
+    "bass",
+    "keys",
+    "pad"
+  ],
+  "pitchedLayers": [
+    "bass",
+    "keys",
+    "pad"
+  ],
+  "fillLayers": [
+    "drums",
+    "perc"
+  ],
+  "countIn": [
+    {
+      "beat": 0.0,
+      "note": 37,
+      "velocity": 100
+    },
+    {
+      "beat": 0.333333,
+      "note": 37,
+      "velocity": 64
+    },
+    {
+      "beat": 0.666667,
+      "note": 37,
+      "velocity": 64
+    },
+    {
+      "beat": 1.0,
+      "note": 37,
+      "velocity": 88
+    },
+    {
+      "beat": 1.333333,
+      "note": 37,
+      "velocity": 64
+    },
+    {
+      "beat": 1.666667,
+      "note": 37,
+      "velocity": 64
+    }
+  ],
+  "entry": [
+    {
+      "note": 49,
+      "velocity": 84
+    }
+  ],
+  "ending": [
+    {
+      "note": 36,
+      "velocity": 104
+    },
+    {
+      "note": 49,
+      "velocity": 92
+    },
+    {
+      "note": 36,
+      "velocity": 100,
+      "layer": "bass",
+      "length": 2
+    },
+    {
+      "note": 55,
+      "velocity": 84,
+      "layer": "keys",
+      "length": 2
+    },
+    {
+      "note": 60,
+      "velocity": 84,
+      "layer": "keys",
+      "length": 2
+    },
+    {
+      "note": 67,
+      "velocity": 84,
+      "layer": "keys",
+      "length": 2
+    },
+    {
+      "note": 48,
+      "velocity": 76,
+      "layer": "pad",
+      "length": 3
+    },
+    {
+      "note": 55,
+      "velocity": 76,
+      "layer": "pad",
+      "length": 3
+    },
+    {
+      "note": 60,
+      "velocity": 76,
+      "layer": "pad",
+      "length": 3
+    }
+  ],
+  "sections": [
+    {
+      "name": "Verse",
+      "pattern": "verse.mid",
+      "patternMinor": "verse-minor.mid",
+      "patternIntense": "verse-intense.mid",
+      "patternIntenseMinor": "verse-intense-minor.mid",
+      "fill": "fill-verse.mid"
+    },
+    {
+      "name": "Chorus",
+      "pattern": "chorus.mid",
+      "patternMinor": "chorus-minor.mid",
+      "patternIntense": "chorus-intense.mid",
+      "patternIntenseMinor": "chorus-intense-minor.mid",
+      "fill": "fill-chorus.mid"
+    }
+  ],
+  "mix": {
+    "keys": 4.0,
+    "pad": 6.0,
+    "bass": -2.0
+  },
+  "stagedEntry": {
+    "keyKnown": [
+      {
+        "bar": 0,
+        "layers": [
+          "pad",
+          "keys"
+        ]
+      },
+      {
+        "bar": 4,
+        "layers": [
+          "bass",
+          "perc"
+        ]
+      },
+      {
+        "bar": 8,
+        "layers": [
+          "drums"
+        ]
+      }
+    ],
+    "keyUnknown": [
+      {
+        "bar": 0,
+        "layers": [
+          "drums",
+          "perc"
+        ]
+      }
+    ],
+    "afterKeyLock": {
+      "layers": [
+        "bass",
+        "keys",
+        "pad"
+      ],
+      "everyBars": 4
+    }
+  }
+}

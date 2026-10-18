@@ -112,12 +112,16 @@
       "name": "Verse",
       "pattern": "verse.mid",
       "patternMinor": "verse-minor.mid",
+      "patternIntense": "verse-intense.mid",
+      "patternIntenseMinor": "verse-intense-minor.mid",
       "fill": "fill-verse.mid"
     },
     {
       "name": "Chorus",
       "pattern": "chorus.mid",
       "patternMinor": "chorus-minor.mid",
+      "patternIntense": "chorus-intense.mid",
+      "patternIntenseMinor": "chorus-intense-minor.mid",
       "fill": "fill-chorus.mid"
     }
   ],

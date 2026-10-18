@@ -68,8 +68,14 @@ void AudioEngine::setStyle(std::unique_ptr<Style> style)
     command.type = Command::Type::setStyle;
     command.style = style_;
     if (style_ != nullptr)
+    {
         for (std::size_t i = 0; i < style_->layers.size() && i < command.routes.size(); ++i)
             command.routes[i] = partForLayer(style_->layers[i]);
+        for (const auto& [part, db] : style_->mixDb)
+            for (int p = 0; p < numBandParts; ++p)
+                if (part == partName(static_cast<BandPart>(p)))
+                    command.styleGains[static_cast<std::size_t>(p)] = juce::Decibels::decibelsToGain(db);
+    }
     pushCommand(command);
 }
 
@@ -82,6 +88,15 @@ void AudioEngine::startBand(std::int64_t downbeatSample, double samplesPerBeat, 
     command.section = section;
     command.countInBars = countInBars;
     command.keyIndex = static_cast<std::int8_t>(key.index());
+    pushCommand(command);
+}
+
+void AudioEngine::setBandDynamics(float velocityScale, bool intense) noexcept
+{
+    Command command;
+    command.type = Command::Type::setDynamics;
+    command.velocityScale = velocityScale;
+    command.intense = intense;
     pushCommand(command);
 }
 
@@ -150,6 +165,8 @@ AudioEngine::BandStatus AudioEngine::bandStatus() const noexcept
     status.samplesPerBeat = bandSamplesPerBeat_.load();
     status.key = Key::fromIndex(bandKey_.load());
     status.layers = bandLayers_.load();
+    status.velocityScale = bandVelocityScale_.load();
+    status.intense = bandIntense_.load();
     const double rate = infoSampleRate_.load();
     status.bpm = status.samplesPerBeat > 0.0 && rate > 0.0 ? 60.0 * rate / status.samplesPerBeat : 0.0;
     return status;
@@ -364,12 +381,14 @@ void AudioEngine::applyCommands() noexcept
                 // old style; the new routes apply after that.
                 player_.setStyle(command.style);
                 nextLayerRoutes_ = command.routes;
+                nextStyleGains_ = command.styleGains;
                 routesChanged_ = true;
                 break;
             case Command::Type::startBand:
                 player_.start(command.sample, command.samplesPerBeat, command.section, command.countInBars, Key::fromIndex(command.keyIndex));
                 break;
             case Command::Type::setBandKey:    player_.setKey(Key::fromIndex(command.keyIndex)); break;
+            case Command::Type::setDynamics:   player_.setDynamics(command.velocityScale, command.intense); break;
             case Command::Type::stopBand:      player_.stop(); break;
             case Command::Type::stopBandNow:   player_.stopNow(); break;
             case Command::Type::nextSection:   player_.nextSection(); break;
@@ -391,6 +410,8 @@ void AudioEngine::publishBandStatus() noexcept
     bandSamplesPerBeat_.store(player_.style() != nullptr ? player_.samplesPerBeat() : 0.0, std::memory_order_relaxed);
     bandKey_.store(player_.playingKey().index(), std::memory_order_relaxed);
     bandLayers_.store(player_.state() == BandState::stopped ? 0u : player_.activeLayers(), std::memory_order_relaxed);
+    bandVelocityScale_.store(player_.velocityScale(), std::memory_order_relaxed);
+    bandIntense_.store(player_.intense(), std::memory_order_relaxed);
 }
 
 void AudioEngine::renderBand(std::int64_t chunkStart, int numSamples) noexcept
@@ -410,6 +431,7 @@ void AudioEngine::renderBand(std::int64_t chunkStart, int numSamples) noexcept
     if (routesChanged_)
     {
         layerRoutes_ = nextLayerRoutes_;
+        styleGains_ = nextStyleGains_;
         routesChanged_ = false;
     }
     // The instruments render even when the band has stopped, so the last notes ring out.
@@ -512,11 +534,12 @@ void AudioEngine::processChunk(const float* mic, float* const* outputs, int numO
     instrument_.render(left, right, numSamples);
     mixStereo(left, right, 1.0f, 1.0f);
 
-    for (auto& part : parts_)
+    for (std::size_t p = 0; p < parts_.size(); ++p)
     {
+        auto& part = parts_[p];
         if (!part.instrument.isLoaded())
             continue;
-        const float gain = part.gain.load(std::memory_order_relaxed);
+        const float gain = part.gain.load(std::memory_order_relaxed) * styleGains_[p];
         mixStereo(part.buffer.getReadPointer(0), part.buffer.getReadPointer(1), part.currentGain, gain);
         part.currentGain = gain;
     }

@@ -26,6 +26,7 @@ namespace
 {
 const juce::File assets(LB_ASSETS_DIR);
 const juce::File afrobeats = assets.getChildFile("grooves/afrobeats");
+const juce::File worship = assets.getChildFile("grooves/worship-6-8");
 const juce::File afroKit = assets.getChildFile("sfz/afro-kit/afro-kit.sfz");
 const juce::File synthBass = assets.getChildFile("sfz/bass/synth-bass.sfz");
 const juce::File warmPad = assets.getChildFile("sfz/pad/warm-pad.sfz");
@@ -56,7 +57,7 @@ struct BandHarness
 {
     static constexpr int heardLatency = lbtest::fakeOutputLatency + blockSize;
 
-    explicit BandHarness(bool loadKit = true, bool loadHarmony = false)
+    explicit BandHarness(bool loadKit = true, bool loadHarmony = false, const juce::File& styleFolder = afrobeats)
     {
         fakeNow = 0.0;
         engine.setClock(&fakeClock);
@@ -69,7 +70,7 @@ struct BandHarness
             engine.loadBandInstrument(lb::AudioEngine::BandPart::keys, piano); // its samples may not be downloaded
         }
         juce::String error;
-        auto style = lb::loadStyle(afrobeats, error);
+        auto style = lb::loadStyle(styleFolder, error);
         REQUIRE(style != nullptr);
         engine.setStyle(std::move(style));
         engine.audioDeviceAboutToStart(&device);
@@ -163,6 +164,58 @@ double tapFour(BandHarness& h, double first, double bpm, double jitter, std::mt1
 }
 } // namespace
 
+namespace
+{
+// The strongest frequency between 30 and 250 Hz in the output from `from`, `seconds` long.
+double lowPeakHz(const std::vector<float>& output, std::int64_t from, double seconds)
+{
+    const auto n = static_cast<std::size_t>(seconds * sampleRate);
+    double bestHz = 0.0, bestPower = 0.0;
+    for (double hz = 30.0; hz <= 250.0; hz *= std::pow(2.0, 1.0 / 240.0)) // 5-cent steps
+    {
+        double re = 0.0, im = 0.0;
+        for (std::size_t i = 0; i < n && static_cast<std::size_t>(from) + i < output.size(); ++i)
+        {
+            const double phase = 2.0 * 3.141592653589793 * hz * static_cast<double>(i) / sampleRate;
+            re += output[static_cast<std::size_t>(from) + i] * std::cos(phase);
+            im += output[static_cast<std::size_t>(from) + i] * std::sin(phase);
+        }
+        if (re * re + im * im > bestPower)
+        {
+            bestPower = re * re + im * im;
+            bestHz = hz;
+        }
+    }
+    return bestHz;
+}
+
+int pitchClassOf(double hz)
+{
+    return ((static_cast<int>(std::lround(69.0 + 12.0 * std::log2(hz / 440.0))) % 12) + 12) % 12;
+}
+
+// A plain sung melody in D major, as a voice file: "Twinkle, twinkle" in two phrases, with a
+// gap between the notes and a breath after each phrase. It loops.
+std::vector<float> twinkleInD()
+{
+    const int melody[] = { 62, 62, 69, 69, 71, 71, 69, -1, 67, 67, 66, 66, 64, 64, 62, -1 };
+    std::vector<float> voice;
+    double phase = 0.0;
+    for (const int note : melody)
+    {
+        const int length = static_cast<int>((note < 0 ? 0.6 : 0.42) * sampleRate);
+        const double hz = note < 0 ? 0.0 : 440.0 * std::pow(2.0, (note - 69) / 12.0);
+        for (int i = 0; i < length; ++i)
+        {
+            const bool sounding = note >= 0 && i < length - static_cast<int>(0.06 * sampleRate);
+            phase += 2.0 * 3.141592653589793 * hz / sampleRate;
+            voice.push_back(sounding ? static_cast<float>(0.3 * std::sin(phase) + 0.1 * std::sin(2.0 * phase) + 0.05 * std::sin(3.0 * phase)) : 0.0f);
+        }
+    }
+    return voice;
+}
+} // namespace
+
 TEST_CASE("GrooveLoader reads the Afrobeats style")
 {
     juce::String error;
@@ -223,10 +276,13 @@ TEST_CASE("GrooveLoader reads the Afrobeats style")
     CHECK(at(1.5, 36) != notes.end()); // the "and" of 2
 }
 
-TEST_CASE("The Afrobeats harmony stays in its registers in every key")
+TEST_CASE("Each style's harmony stays in its registers in every key")
 {
+    for (const auto& folder : { afrobeats, worship })
+    {
+    INFO(folder.getFileName());
     juce::String error;
-    const auto style = lb::loadStyle(afrobeats, error);
+    const auto style = lb::loadStyle(folder, error);
     REQUIRE(style != nullptr);
     // Bass from D1 to C4, piano from E3 to Eb5 (inside its samples, A2 to E6), pad from Ab2 to Bb4.
     const std::pair<int, std::pair<int, int>> registers[] = { { bassLayer, { 26, 60 } }, { keysLayer, { 52, 75 } }, { padLayer, { 44, 70 } } };
@@ -235,15 +291,64 @@ TEST_CASE("The Afrobeats harmony stays in its registers in every key")
         const auto key = lb::Key::fromIndex(index);
         const int shift = lb::PatternPlayer::transposition(key);
         for (const auto& section : style->sections)
-            for (const auto& note : section.patternFor(key.minor).notes)
-                for (const auto& [layer, range] : registers)
-                    if (note.layer == layer)
-                    {
-                        INFO(key.name() << ", " << section.name << ", " << style->layers[static_cast<std::size_t>(layer)] << " note " << int { note.note });
-                        CHECK(note.note + shift >= range.first);
-                        CHECK(note.note + shift <= range.second);
-                    }
+            for (const bool intense : { false, true })
+                for (const auto& note : section.patternFor(key.minor, intense).notes)
+                    for (const auto& [layer, range] : registers)
+                        if (note.layer == layer)
+                        {
+                            INFO(key.name() << ", " << section.name << (intense ? " intense" : "") << ", "
+                                            << style->layers[static_cast<std::size_t>(layer)] << " note " << int { note.note });
+                            CHECK(note.note + shift >= range.first);
+                            CHECK(note.note + shift <= range.second);
+                        }
     }
+    }
+}
+
+TEST_CASE("GrooveLoader reads the worship style in 6/8, counted in dotted quarters")
+{
+    juce::String error;
+    const auto style = lb::loadStyle(worship, error);
+    REQUIRE(style != nullptr);
+    CHECK(error.isEmpty());
+    CHECK(style->name == "Worship 6/8");
+    CHECK(style->meter == "6/8");
+    CHECK(style->beatsPerBar == 2);
+    CHECK(style->defaultBpm == 66.0);
+    CHECK(style->swing == 0.5);
+    REQUIRE(style->sections.size() == 2);
+    for (const auto& section : style->sections)
+    {
+        CHECK(section.main.lengthBeats == 8.0); // four bars of two beats
+        CHECK(section.mainMinor.lengthBeats == 8.0);
+        CHECK(section.mainIntense.lengthBeats == 8.0);
+        CHECK(section.mainIntenseMinor.lengthBeats == 8.0);
+        CHECK(section.fill.lengthBeats == 2.0);
+    }
+
+    // Six sticks on the eighths: thirds of a beat.
+    REQUIRE(style->countIn.size() == 6);
+    for (std::size_t i = 0; i < 6; ++i)
+        CHECK(style->countIn[i].beat == Approx(static_cast<double>(i) / 3.0).margin(1e-5));
+
+    // The verse: kick on 1, rim on 4 (the second beat), the shaker's eighths; the piano's
+    // arpeggio on the eighths.
+    const auto& notes = style->sections[0].main.notes;
+    const auto has = [&](double beat, int note, int layer) {
+        return std::any_of(notes.begin(), notes.end(), [&](const lb::GrooveNote& n) {
+            return std::abs(n.beat - beat) < 1e-6 && n.note == note && n.layer == layer;
+        });
+    };
+    CHECK(has(0.0, 36, drumsLayer));
+    CHECK(has(1.0, 37, drumsLayer));
+    for (int eighth = 0; eighth < 6; ++eighth)
+        CHECK(has(eighth / 3.0, 70, percLayer));
+    CHECK(std::count_if(notes.begin(), notes.end(), [](const lb::GrooveNote& n) { return n.layer == keysLayer && n.beat < 2.0; }) == 6);
+
+    REQUIRE(style->entryKeyKnown.size() == 3);
+    CHECK(style->entryKeyKnown[0].layers == (1u << padLayer | 1u << keysLayer));
+    CHECK(style->entryKeyKnown[1].bar == 4);
+    CHECK(style->entryKeyKnown[2].layers == 1u << drumsLayer);
 }
 
 TEST_CASE("GrooveLoader explains what is wrong with a broken style")
@@ -254,8 +359,8 @@ TEST_CASE("GrooveLoader explains what is wrong with a broken style")
 
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("lb-style-" + juce::Uuid().toString());
     REQUIRE(folder.createDirectory());
-    for (const auto* name : { "verse.mid", "verse-minor.mid", "chorus.mid", "chorus-minor.mid", "fill-verse.mid", "fill-chorus.mid" })
-        REQUIRE(afrobeats.getChildFile(name).copyFileTo(folder.getChildFile(name)));
+    for (const auto& midi : afrobeats.findChildFiles(juce::File::findFiles, false, "*.mid"))
+        REQUIRE(midi.copyFileTo(folder.getChildFile(midi.getFileName())));
     auto json = afrobeats.getChildFile("style.json").loadFileAsString();
 
     folder.getChildFile("style.json").replaceWithText(json.replace("\"perc\"", "\"percussion\""));
@@ -410,6 +515,91 @@ TEST_CASE("Band: four taps while it plays re-lock it within one bar, without a j
     }
 }
 
+TEST_CASE("Band: the worship style plays in 6/8: taps on the dotted quarters, the staged entry, the bass in the key")
+{
+    BandHarness h(true, true, worship);
+    h.runUntil(0.5);
+    h.controller.setKey(lb::Key { 7, false }); // G major, known before the band starts
+    std::mt19937 random(4);
+    const double period = 60.0 / 66.0;
+    const double fifth = tapFour(h, 0.5, 66.0, 0.0, random);
+    h.runUntil(fifth + 9 * 2 * period + 0.1); // bars 0 to 8, two beats each
+
+    // Beats every dotted quarter, two to a bar, the first one on the fifth tap.
+    REQUIRE(h.ticks.size() >= 18);
+    CHECK(BandHarness::heardAt(h.ticks.front().sampleTime) == Approx(fifth).margin(0.002));
+    for (std::size_t i = 0; i < h.ticks.size(); ++i)
+    {
+        CHECK(h.ticks[i].bar == static_cast<int>(i / 2));
+        CHECK(h.ticks[i].beat == static_cast<int>(i % 2));
+        if (i > 0)
+            CHECK(static_cast<double>(h.ticks[i].sampleTime - h.ticks[i - 1].sampleTime) / sampleRate == Approx(period).margin(0.0002));
+    }
+
+    // Pad and piano from bar 0, the bass and shaker from bar 4, the drums from bar 8.
+    const auto layersOf = [&](int bar) {
+        for (const auto& tick : h.ticks)
+            if (tick.bar == bar)
+                return tick.layers;
+        return 0u;
+    };
+    CHECK(layersOf(0) == (1u << keysLayer | 1u << padLayer));
+    CHECK(layersOf(4) == (1u << keysLayer | 1u << padLayer | 1u << bassLayer | 1u << percLayer));
+    CHECK(layersOf(8) == 0b11111u);
+
+    // Bar 4 starts the verse progression again: the bass holds G for the first beat.
+    const auto bar4 = h.barStart(4);
+    REQUIRE(bar4 > 0);
+    CHECK(pitchClassOf(lowPeakHz(h.output, bar4 + 400, 0.6)) == 7);
+}
+
+TEST_CASE("Band: louder singing makes the band play harder and turn intense; off, it plays as written")
+{
+    // A voice that sings a scale at its usual level for 24 s, then 12 dB louder.
+    std::vector<float> voice;
+    double phase = 0.0;
+    for (int i = 0; i < static_cast<int>(40.0 * sampleRate); ++i)
+    {
+        const double t = i / sampleRate;
+        const int degree = static_cast<int>(t / 0.5) % 8;
+        const int scale[] = { 0, 2, 4, 5, 7, 9, 11, 12 };
+        phase += 2.0 * 3.141592653589793 * 220.0 * std::pow(2.0, scale[degree] / 12.0) / sampleRate;
+        const double amplitude = t < 24.0 ? 0.05 : 0.2;
+        voice.push_back(static_cast<float>(amplitude * (std::sin(phase) + 0.3 * std::sin(2.0 * phase))));
+    }
+    BandHarness h(true);
+    h.keepOutput = false;
+    h.engine.setFileInput(std::move(voice), "louder voice");
+    h.engine.setInputSource(lb::AudioEngine::InputSource::file);
+    h.runUntil(0.5);
+    h.controller.setTempoBpm(104.0);
+    h.controller.startStop();
+
+    h.runUntil(23.5);
+    auto status = h.engine.bandStatus();
+    CHECK(status.velocityScale == Approx(1.0f).margin(0.07f));
+    CHECK_FALSE(status.intense);
+
+    h.ticks.clear();
+    h.runUntil(36.0); // 12 s of loud singing: more than two bars
+    status = h.engine.bandStatus();
+    CHECK(status.velocityScale > 1.1f);
+    CHECK(status.intense);
+    const auto intenseTick = std::find_if(h.ticks.begin(), h.ticks.end(), [](const lb::BeatTick& tick) { return (tick.flags & lb::BeatTick::intense) != 0; });
+    REQUIRE(intenseTick != h.ticks.end());
+    CHECK(intenseTick->beat == 0); // the intense variation starts on a downbeat
+    const double startedAfter = static_cast<double>(intenseTick->sampleTime) / sampleRate - 24.0;
+    WARN("the band turned intense " << startedAfter << " s after the singer got louder");
+    CHECK(startedAfter > 4.6);  // not before two bars of loud singing
+    CHECK(startedAfter < 10.0);
+
+    h.controller.setDynamicsEnabled(false);
+    h.runUntil(39.0);
+    status = h.engine.bandStatus();
+    CHECK(status.velocityScale == 1.0f);
+    CHECK_FALSE(status.intense);
+}
+
 TEST_CASE("Band: the nudge keys change the tempo by 1% without moving the beat")
 {
     BandHarness h(false);
@@ -492,57 +682,6 @@ TEST_CASE("Band: MIDI taps and controls work like the keys")
     CHECK(!h.controller.handleMidi(juce::MidiMessage::controllerEvent(1, 7, 100))); // volume: not ours
 }
 
-namespace
-{
-// The strongest frequency between 30 and 250 Hz in the output from `from`, `seconds` long.
-double lowPeakHz(const std::vector<float>& output, std::int64_t from, double seconds)
-{
-    const auto n = static_cast<std::size_t>(seconds * sampleRate);
-    double bestHz = 0.0, bestPower = 0.0;
-    for (double hz = 30.0; hz <= 250.0; hz *= std::pow(2.0, 1.0 / 240.0)) // 5-cent steps
-    {
-        double re = 0.0, im = 0.0;
-        for (std::size_t i = 0; i < n && static_cast<std::size_t>(from) + i < output.size(); ++i)
-        {
-            const double phase = 2.0 * 3.141592653589793 * hz * static_cast<double>(i) / sampleRate;
-            re += output[static_cast<std::size_t>(from) + i] * std::cos(phase);
-            im += output[static_cast<std::size_t>(from) + i] * std::sin(phase);
-        }
-        if (re * re + im * im > bestPower)
-        {
-            bestPower = re * re + im * im;
-            bestHz = hz;
-        }
-    }
-    return bestHz;
-}
-
-int pitchClassOf(double hz)
-{
-    return ((static_cast<int>(std::lround(69.0 + 12.0 * std::log2(hz / 440.0))) % 12) + 12) % 12;
-}
-
-// A plain sung melody in D major, as a voice file: "Twinkle, twinkle" in two phrases, with a
-// gap between the notes and a breath after each phrase. It loops.
-std::vector<float> twinkleInD()
-{
-    const int melody[] = { 62, 62, 69, 69, 71, 71, 69, -1, 67, 67, 66, 66, 64, 64, 62, -1 };
-    std::vector<float> voice;
-    double phase = 0.0;
-    for (const int note : melody)
-    {
-        const int length = static_cast<int>((note < 0 ? 0.6 : 0.42) * sampleRate);
-        const double hz = note < 0 ? 0.0 : 440.0 * std::pow(2.0, (note - 69) / 12.0);
-        for (int i = 0; i < length; ++i)
-        {
-            const bool sounding = note >= 0 && i < length - static_cast<int>(0.06 * sampleRate);
-            phase += 2.0 * 3.141592653589793 * hz / sampleRate;
-            voice.push_back(sounding ? static_cast<float>(0.3 * std::sin(phase) + 0.1 * std::sin(2.0 * phase) + 0.05 * std::sin(3.0 * phase)) : 0.0f);
-        }
-    }
-    return voice;
-}
-} // namespace
 
 TEST_CASE("Band: a sung melody locks the key, and the band comes in on it with the staged entry")
 {

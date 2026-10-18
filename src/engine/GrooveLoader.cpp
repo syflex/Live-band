@@ -65,7 +65,10 @@ std::vector<GrooveNote> readHits(const juce::var& list, const std::vector<std::s
     return hits;
 }
 
-bool readPattern(const juce::File& file, const std::vector<std::string>& layers, int beatsPerBar, Pattern& pattern, juce::String& error)
+// MIDI files count in quarter notes; a style counts in its beats (quarters, or dotted
+// quarters in 6/8), quartersPerBeat of them each.
+bool readPattern(const juce::File& file, const std::vector<std::string>& layers, int beatsPerBar, double quartersPerBeat, Pattern& pattern,
+                 juce::String& error)
 {
     juce::FileInputStream stream(file);
     juce::MidiFile midi;
@@ -74,8 +77,8 @@ bool readPattern(const juce::File& file, const std::vector<std::string>& layers,
         error = "cannot read " + file.getFileName();
         return false;
     }
-    const int ppq = midi.getTimeFormat();
-    if (ppq <= 0)
+    const double ticksPerBeat = midi.getTimeFormat() * quartersPerBeat;
+    if (midi.getTimeFormat() <= 0)
     {
         error = file.getFileName() + " uses SMPTE time, not beats";
         return false;
@@ -115,12 +118,12 @@ bool readPattern(const juce::File& file, const std::vector<std::string>& layers,
             if (!event->message.isNoteOn())
                 continue;
             GrooveNote n;
-            n.beat = event->message.getTimeStamp() / ppq;
+            n.beat = event->message.getTimeStamp() / ticksPerBeat;
             n.note = static_cast<std::uint8_t>(event->message.getNoteNumber());
             n.velocity = event->message.getVelocity();
             n.layer = static_cast<std::uint8_t>(layer);
             if (event->noteOffObject != nullptr)
-                n.lengthBeats = static_cast<float>((event->noteOffObject->message.getTimeStamp() - event->message.getTimeStamp()) / ppq);
+                n.lengthBeats = static_cast<float>((event->noteOffObject->message.getTimeStamp() - event->message.getTimeStamp()) / ticksPerBeat);
             if (n.lengthBeats <= 0.0f)
                 n.lengthBeats = 0.125f;
             pattern.notes.push_back(n);
@@ -128,7 +131,7 @@ bool readPattern(const juce::File& file, const std::vector<std::string>& layers,
     }
 
     // Whole bars, enough for the last event (the files mark the loop end with a meta event).
-    const double lastBeat = midi.getLastTimestamp() / ppq;
+    const double lastBeat = midi.getLastTimestamp() / ticksPerBeat;
     const int bars = std::max(1, static_cast<int>(std::ceil(lastBeat / beatsPerBar - 1e-9)));
     pattern.lengthBeats = static_cast<double>(bars) * beatsPerBar;
     pattern.sort();
@@ -150,15 +153,29 @@ std::unique_ptr<Style> loadStyle(const juce::File& folder, juce::String& error)
     auto style = std::make_unique<Style>();
     style->name = json.getProperty("name", folder.getFileName()).toString().toStdString();
 
+    // x/4 counts in quarter notes; 6/8, 9/8 and 12/8 in dotted quarters, the beat people
+    // clap to, two to four of them a bar.
+    double quartersPerBeat = 1.0;
     const auto signature = json.getProperty("timeSignature", juce::var());
     if (signature.isArray() && signature.size() == 2)
     {
-        if (static_cast<int>(signature[1]) != 4)
+        const int top = static_cast<int>(signature[0]);
+        const int bottom = static_cast<int>(signature[1]);
+        if (bottom == 4 && top >= 1)
         {
-            error = "only time signatures counted in quarter notes (such as 4/4) are supported for now";
+            style->beatsPerBar = top;
+        }
+        else if (bottom == 8 && top >= 6 && top % 3 == 0)
+        {
+            style->beatsPerBar = top / 3;
+            quartersPerBeat = 1.5;
+        }
+        else
+        {
+            error = "the time signature must be counted in quarters (such as 4/4) or be compound (6/8, 9/8, 12/8)";
             return nullptr;
         }
-        style->beatsPerBar = static_cast<int>(signature[0]);
+        style->meter = juce::String(top).toStdString() + "/" + juce::String(bottom).toStdString();
     }
 
     const auto tempo = json.getProperty("tempo", juce::var());
@@ -199,15 +216,25 @@ std::unique_ptr<Style> loadStyle(const juce::File& folder, juce::String& error)
         {
             Section section;
             section.name = item.getProperty("name", "Section").toString().toStdString();
-            if (!readPattern(folder.getChildFile(item.getProperty("pattern", "").toString()), style->layers, style->beatsPerBar, section.main, error)
-                || !readPattern(folder.getChildFile(item.getProperty("fill", "").toString()), style->layers, style->beatsPerBar, section.fill, error))
+            if (!readPattern(folder.getChildFile(item.getProperty("pattern", "").toString()), style->layers, style->beatsPerBar, quartersPerBeat,
+                             section.main, error)
+                || !readPattern(folder.getChildFile(item.getProperty("fill", "").toString()), style->layers, style->beatsPerBar, quartersPerBeat,
+                                section.fill, error))
                 return nullptr;
-            if (item.hasProperty("patternMinor")
-                && !readPattern(folder.getChildFile(item.getProperty("patternMinor", "").toString()), style->layers, style->beatsPerBar, section.mainMinor, error))
-                return nullptr;
+            for (const auto& [key, pattern] : { std::pair<const char*, Pattern*> { "patternMinor", &section.mainMinor },
+                                                { "patternIntense", &section.mainIntense },
+                                                { "patternIntenseMinor", &section.mainIntenseMinor } })
+                if (item.hasProperty(key)
+                    && !readPattern(folder.getChildFile(item.getProperty(key, "").toString()), style->layers, style->beatsPerBar, quartersPerBeat,
+                                    *pattern, error))
+                    return nullptr;
             style->sections.push_back(std::move(section));
         }
     }
+
+    if (const auto* mix = json.getProperty("mix", juce::var()).getDynamicObject())
+        for (const auto& entry : mix->getProperties())
+            style->mixDb.emplace_back(entry.name.toString().toStdString(), static_cast<float>(static_cast<double>(entry.value)));
 
     if (const auto problem = style->validate(); !problem.empty())
     {

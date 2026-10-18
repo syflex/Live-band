@@ -29,7 +29,8 @@ struct BeatTick
         countIn = 1,
         fill = 2,
         ending = 4,
-        sectionStart = 8
+        sectionStart = 8,
+        intense = 16
     };
 
     std::int64_t sampleTime = 0;
@@ -40,6 +41,7 @@ struct BeatTick
     std::int8_t key = -1;      // Key::index() of the key the band plays in; -1 without one
     std::uint32_t layers = 0;  // the layers playing in this bar
     float bpm = 0.0f;
+    float velocityScale = 1.0f;
 };
 
 enum class BandState : std::uint8_t
@@ -68,6 +70,10 @@ enum class BandState : std::uint8_t
 // at the start; a band started without one brings its harmony in at the first stage boundary
 // after the key arrives. When the drums come in after the first bar, they bring the entry hits.
 //
+// Dynamics: a velocity scale applies to every note from now on, and the intense variation of
+// a section (if it has one) starts on the next downbeat, with the entry hits, and ends on a
+// downbeat too.
+//
 // Threads: prepare() and setStyle() while stopped and not processing; everything else on
 // the audio thread, between process() calls. Real-time safe.
 class PatternPlayer
@@ -93,6 +99,7 @@ public:
     void steerToNearestBeat(std::int64_t sample, double samplesPerBeat) noexcept;
     void setLayerMask(std::uint32_t mask) noexcept { layerMask_ = mask; }
     void setKey(const Key& key) noexcept; // from the next downbeat when playing
+    void setDynamics(float velocityScale, bool intense) noexcept;
 
     // How far the pitched layers move for a key: -6 to +5 semitones from C.
     static int transposition(const Key& key) noexcept { return key.isValid() ? (key.tonic + 6) % 12 - 6 : 0; }
@@ -117,6 +124,8 @@ public:
     Key key() const noexcept { return pendingKey_.isValid() ? pendingKey_ : key_; } // the latest key given
     Key playingKey() const noexcept { return key_; }
     std::uint32_t activeLayers() const noexcept { return arrangementMask_ & layerMask_; }
+    bool intense() const noexcept { return intense_; } // the variation playing now
+    float velocityScale() const noexcept { return velocityScale_; }
     // The tempo playing now; when stopped, the tempo the band will start at.
     double samplesPerBeat() const noexcept
     {
@@ -174,6 +183,11 @@ private:
     bool waitingForKey_ = false;
     std::uint32_t arrangementMask_ = 0xffffffffu;
     std::uint32_t entryLayers_ = 0; // the layers the entry hits are on
+
+    // Dynamics.
+    float velocityScale_ = 1.0f;
+    bool intense_ = false;
+    bool pendingIntense_ = false;
     BeatClock clock_;
     BandState state_ = BandState::stopped;
     std::uint32_t layerMask_ = 0xffffffffu;

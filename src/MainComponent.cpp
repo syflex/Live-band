@@ -21,6 +21,8 @@ constexpr auto bandPercKey = "band.perc";
 constexpr auto bandBassKey = "band.bass";
 constexpr auto bandKeysKey = "band.keys";
 constexpr auto bandPadKey = "band.pad";
+constexpr auto bandStyleKey = "band.style";
+constexpr auto bandDynamicsKey = "band.dynamics";
 
 constexpr float meterFloorDb = -60.0f;
 constexpr float meterDecayDbPerTick = 1.5f; // at 30 Hz, about 45 dB per second
@@ -186,8 +188,8 @@ MainComponent::MainComponent()
     addAndMakeVisible(pitchView_);
 
     hint_.setText("Band keys: Space taps the beat (four taps start the band), Enter starts or stops, N next section, F fill, "
-                  "Esc stops at once, Left/Right nudge the tempo 1%. A MIDI pedal or pad taps too. Key: K locks it (or listens again), "
-                  "Up/Down a semitone, M relative.\n"
+                  "Esc stops at once, Left/Right nudge the tempo 1%. In 6/8, tap the two beats of each bar. A MIDI pedal or pad taps too. "
+                  "Key: K locks it (or listens again), Up/Down a semitone, M relative.\n"
                   "Keys 1 to 8 play test notes. Drop a WAV file here to use it as the voice. Use \"Hear my voice\" only with headphones.",
                   juce::dontSendNotification);
     hint_.setJustificationType(juce::Justification::topLeft);
@@ -249,6 +251,8 @@ void MainComponent::resized()
 
     row = area.removeFromTop(30);
     bandLabel_.setBounds(row.removeFromLeft(60));
+    styleBox_.setBounds(row.removeFromLeft(150));
+    gap(row, 10);
     startButton_.setBounds(row.removeFromLeft(80));
     gap(row, 6);
     tapButton_.setBounds(row.removeFromLeft(80));
@@ -260,9 +264,6 @@ void MainComponent::resized()
     nextButton_.setBounds(row.removeFromLeft(70));
     gap(row, 6);
     fillButton_.setBounds(row.removeFromLeft(70));
-    gap(row, 14);
-    drumsToggle_.setBounds(row.removeFromLeft(80));
-    percToggle_.setBounds(row.removeFromLeft(70));
     area.removeFromTop(4);
 
     row = area.removeFromTop(30);
@@ -274,10 +275,6 @@ void MainComponent::resized()
 
     row = area.removeFromTop(30);
     keyLabel_.setBounds(row.removeFromLeft(60));
-    padToggle_.setBounds(row.removeFromRight(60));
-    keysToggle_.setBounds(row.removeFromRight(70));
-    bassToggle_.setBounds(row.removeFromRight(70));
-    row.removeFromRight(10);
     relativeButton_.setBounds(row.removeFromRight(110));
     row.removeFromRight(6);
     keyUpButton_.setBounds(row.removeFromRight(40));
@@ -287,6 +284,16 @@ void MainComponent::resized()
     lockButton_.setBounds(row.removeFromRight(80));
     row.removeFromRight(8);
     keyStatus_.setBounds(row);
+    area.removeFromTop(4);
+
+    row = area.removeFromTop(30);
+    partsLabel_.setBounds(row.removeFromLeft(60));
+    for (auto* toggle : { &drumsToggle_, &percToggle_, &bassToggle_, &keysToggle_, &padToggle_ })
+        toggle->setBounds(row.removeFromLeft(toggle == &drumsToggle_ ? 80 : 70));
+    gap(row, 20);
+    dynamicsToggle_.setBounds(row.removeFromLeft(140));
+    gap(row, 8);
+    dynamicsStatus_.setBounds(row);
     area.removeFromTop(10);
 
     row = area.removeFromTop(30);
@@ -320,7 +327,7 @@ void MainComponent::resized()
     meterArea_ = area.removeFromTop(50);
     area.removeFromTop(6);
 
-    auto analysisRow = area.removeFromTop(240);
+    auto analysisRow = area.removeFromTop(206);
     noteDisplay_.setBounds(analysisRow.removeFromLeft(250));
     analysisRow.removeFromLeft(8);
     pitchView_.setBounds(analysisRow);
@@ -743,6 +750,7 @@ juce::DynamicObject::Ptr MainComponent::sessionMetadata()
     bandInfo->setProperty("keyEstimate", juce::String(estimate.best.name()));
     bandInfo->setProperty("keyState", keyStates[static_cast<int>(estimate.state)]);
     bandInfo->setProperty("singerTuningCents", std::round(estimate.tuningCents));
+    bandInfo->setProperty("followVoiceLevel", band_.dynamicsEnabled());
     bandInfo->setProperty("volumeDb", bandGainSlider_.getValue());
     bandInfo->setProperty("outputLatencySamples", engine_.outputLatencySamples());
     meta->setProperty("band", juce::var(bandInfo.get()));
@@ -996,7 +1004,15 @@ juce::String MainComponent::buildReport()
     const auto band = engine_.bandStatus();
     const char* states[] = { "stopped", "starting", "playing", "ending" };
     line("Band:", juce::String(states[static_cast<int>(band.state)]) + (band.bpm > 0.0 ? ", " + juce::String(band.bpm, 1) + " BPM" : juce::String()));
-    line("Groove:", engine_.style() != nullptr ? juce::String(engine_.style()->name) : juce::String("not loaded"));
+    line("Groove:", engine_.style() != nullptr ? juce::String(engine_.style()->name) + " (" + juce::String(engine_.style()->meter) + ")"
+                                               : juce::String("not loaded"));
+    {
+        const auto& dynamics = band_.dynamics();
+        line("Dynamics:", !band_.dynamicsEnabled() ? juce::String("off")
+                                                   : "velocity x" + juce::String(band.velocityScale, 2) + (band.intense ? ", intense" : "")
+                                                         + "; singer at the " + juce::String(juce::roundToInt(100.0 * dynamics.percentile()))
+                                                         + "th percentile of their level (" + juce::String(dynamics.levelDb(), 1) + " dBFS)");
+    }
     line("Drum kit:", engine_.drumKitName().isEmpty() ? juce::String("not loaded")
                       : engine_.drumKitName() + (missingKitSamples_ > 0 ? " (" + juce::String(missingKitSamples_) + " samples missing)" : juce::String()));
     for (const auto part : { lb::AudioEngine::BandPart::bass, lb::AudioEngine::BandPart::keys, lb::AudioEngine::BandPart::pad })
@@ -1074,8 +1090,19 @@ void MainComponent::loadBand()
             bandProblem_ = "Could not load " + assets.getChildFile(path).getFullPathName();
     missingPianoSamples_ = countMissingSamples(assets.getChildFile("sfz/keys"));
 
+    // Every style in assets/grooves; the last one used, or Afrobeats.
+    for (const auto& folder : assets.getChildFile("grooves").findChildFiles(juce::File::findDirectories, false))
+        if (folder.getChildFile("style.json").existsAsFile())
+            styleFolders_.push_back(folder);
+    std::sort(styleFolders_.begin(), styleFolders_.end(), [](const juce::File& a, const juce::File& b) { return a.getFileName() < b.getFileName(); });
+    const auto wanted = properties_.getUserSettings()->getValue(bandStyleKey, "afrobeats");
+    juce::File chosen = assets.getChildFile("grooves/afrobeats");
+    for (const auto& folder : styleFolders_)
+        if (folder.getFileName() == wanted)
+            chosen = folder;
+
     juce::String error;
-    auto style = lb::loadStyle(assets.getChildFile("grooves/afrobeats"), error);
+    auto style = lb::loadStyle(chosen, error);
     if (style == nullptr)
     {
         bandProblem_ = "Could not load the groove: " + error;
@@ -1083,6 +1110,54 @@ void MainComponent::loadBand()
     }
     engine_.setStyle(std::move(style));
     band_.styleChanged();
+}
+
+void MainComponent::chooseStyle(int index)
+{
+    if (index < 0 || index >= static_cast<int>(styleFolders_.size()))
+        return;
+    juce::String error;
+    auto style = lb::loadStyle(styleFolders_[static_cast<std::size_t>(index)], error);
+    if (style == nullptr)
+    {
+        showMessage("Could not load the style", error);
+        return;
+    }
+    // Changing style stops the band; the new one starts at its own tempo.
+    engine_.setStyle(std::move(style));
+    band_.styleChanged();
+    properties_.getUserSettings()->setValue(bandStyleKey, styleFolders_[static_cast<std::size_t>(index)].getFileName());
+
+    const auto* current = engine_.style();
+    sectionBox_.clear(juce::dontSendNotification);
+    for (std::size_t i = 0; i < current->sections.size(); ++i)
+        sectionBox_.addItem(juce::String(current->sections[i].name), static_cast<int>(i) + 1);
+    sectionBox_.setSelectedId(1, juce::dontSendNotification);
+    beatLamps_.setBeatsPerBar(current->beatsPerBar);
+    bandBpmSlider_.setValue(band_.tempoBpm(), juce::dontSendNotification);
+    pendingTicks_.clear();
+    heardTick_.reset();
+    applyLayerToggles();
+}
+
+int MainComponent::layerIndex(const char* name) const
+{
+    const auto* style = engine_.style();
+    return style != nullptr ? style->layerIndex(name) : -1;
+}
+
+void MainComponent::applyLayerToggles()
+{
+    const std::pair<juce::ToggleButton*, const char*> toggles[] = {
+        { &drumsToggle_, "drums" }, { &percToggle_, "perc" }, { &bassToggle_, "bass" }, { &keysToggle_, "keys" }, { &padToggle_, "pad" }
+    };
+    for (const auto& [toggle, name] : toggles)
+    {
+        const int layer = layerIndex(name);
+        toggle->setEnabled(layer >= 0);
+        if (layer >= 0)
+            engine_.setLayerEnabled(layer, toggle->getToggleState());
+    }
 }
 
 int MainComponent::countMissingSamples(const juce::File& kitFolder)
@@ -1136,17 +1211,28 @@ void MainComponent::setUpBandControls()
     sectionBox_.onChange = [this] { band_.selectSection(sectionBox_.getSelectedId() - 1); };
     addAndMakeVisible(sectionBox_);
 
+    // The style picker: every style in assets/grooves, by the name in its style.json.
+    for (std::size_t i = 0; i < styleFolders_.size(); ++i)
+    {
+        const auto json = juce::JSON::parse(styleFolders_[i].getChildFile("style.json"));
+        styleBox_.addItem(json.getProperty("name", styleFolders_[i].getFileName()).toString(), static_cast<int>(i) + 1);
+        if (style != nullptr && json.getProperty("name", "").toString() == juce::String(style->name))
+            styleBox_.setSelectedId(static_cast<int>(i) + 1, juce::dontSendNotification);
+    }
+    styleBox_.setTooltip("The style the band plays. Changing it stops the band. In 6/8, tap the two beats of each bar.");
+    styleBox_.setWantsKeyboardFocus(false);
+    styleBox_.onChange = [this] { chooseStyle(styleBox_.getSelectedId() - 1); };
+    addAndMakeVisible(styleBox_);
+
+    // Layer switches by name, so they keep working across styles.
     const auto setUpLayer = [&](juce::ToggleButton& toggle, const char* name, const char* key) {
-        const int layer = style != nullptr ? style->layerIndex(name) : -1;
         toggle.setToggleState(settings->getBoolValue(key, true), juce::dontSendNotification);
         toggle.setWantsKeyboardFocus(false);
-        toggle.setEnabled(layer >= 0);
-        toggle.onClick = [this, &toggle, layer, key] {
-            engine_.setLayerEnabled(layer, toggle.getToggleState());
+        toggle.onClick = [this, &toggle, name, key] {
+            if (const int layer = layerIndex(name); layer >= 0)
+                engine_.setLayerEnabled(layer, toggle.getToggleState());
             properties_.getUserSettings()->setValue(key, toggle.getToggleState());
         };
-        if (layer >= 0)
-            engine_.setLayerEnabled(layer, toggle.getToggleState());
         addAndMakeVisible(toggle);
     };
     setUpLayer(drumsToggle_, "drums", bandDrumsKey);
@@ -1154,6 +1240,21 @@ void MainComponent::setUpBandControls()
     setUpLayer(bassToggle_, "bass", bandBassKey);
     setUpLayer(keysToggle_, "keys", bandKeysKey);
     setUpLayer(padToggle_, "pad", bandPadKey);
+    applyLayerToggles();
+    addAndMakeVisible(partsLabel_);
+
+    dynamicsToggle_.setToggleState(settings->getBoolValue(bandDynamicsKey, true), juce::dontSendNotification);
+    dynamicsToggle_.setWantsKeyboardFocus(false);
+    dynamicsToggle_.setTooltip("The band plays harder when you sing out and softer when you sing quietly, against your own "
+                               "range; after two loud bars it plays its fuller version.");
+    dynamicsToggle_.onClick = [this] {
+        band_.setDynamicsEnabled(dynamicsToggle_.getToggleState());
+        properties_.getUserSettings()->setValue(bandDynamicsKey, dynamicsToggle_.getToggleState());
+    };
+    band_.setDynamicsEnabled(dynamicsToggle_.getToggleState());
+    addAndMakeVisible(dynamicsToggle_);
+    dynamicsStatus_.setColour(juce::Label::textColourId, juce::Colours::lightgrey);
+    addAndMakeVisible(dynamicsStatus_);
     drumsToggle_.setTooltip("Kick, snare, hi-hat, toms and cymbals.");
     percToggle_.setTooltip("Shaker, congas, tambourine and bells.");
     bassToggle_.setTooltip("The synth bass, in the key.");
@@ -1233,6 +1334,7 @@ void MainComponent::updateBand()
     beatLamps_.setBeat(heardTick_ ? &*heardTick_ : nullptr, secondsSinceBeat);
     beatLamps_.setStatus(bandStatusText(status));
     keyStatus_.setText(keyStatusText(status), juce::dontSendNotification);
+    dynamicsStatus_.setText(dynamicsText(status), juce::dontSendNotification);
     const bool locked = band_.keyEstimate().state == lb::KeyEstimator::State::locked;
     lockButton_.setButtonText(locked ? "Listen again" : "Lock");
     relativeButton_.setButtonText(band_.bandKey().isValid() && band_.bandKey().minor ? "Relative major" : "Relative minor");
@@ -1294,7 +1396,26 @@ juce::String MainComponent::bandStatusText(const lb::AudioEngine::BandStatus& st
         text << "  -  fill, then " << sectionName(status.pendingSection);
     else if (status.fillScheduled)
         text << "  -  fill";
+    if (status.intense)
+        text << "  -  full";
     text << "  -  " << juce::String(status.bpm, 1) << " BPM";
+    if (style->meter != "4/4")
+        text << " in " << style->meter;
+    return text;
+}
+
+juce::String MainComponent::dynamicsText(const lb::AudioEngine::BandStatus& status) const
+{
+    if (!band_.dynamicsEnabled())
+        return "Off: the band plays as written.";
+    const auto& dynamics = band_.dynamics();
+    if (dynamics.voicedSeconds() < dynamics.settings().minVoicedSeconds)
+        return "Listening to how loud you sing...";
+    const int percent = juce::roundToInt(100.0 * (status.velocityScale - 1.0f));
+    juce::String text = percent == 0 ? juce::String("The band plays as written")
+                                     : "The band plays " + juce::String(std::abs(percent)) + (percent > 0 ? "% harder" : "% softer");
+    if (status.intense)
+        text << ", full: you are singing out";
     return text;
 }
 

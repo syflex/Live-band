@@ -79,7 +79,7 @@ bool SessionRecorder::open(const juce::File& folder, double sampleRate, juce::St
     writeLine(analysisCsv_.get(), "time_s,f0_hz,midi,periodicity,rms_db,odf,voiced,onset\n");
     writeLine(onsetsCsv_.get(), "time_s,strength,source\n");
     writeLine(clicksCsv_.get(), "time_s,bar,beat,subdivision,bpm\n");
-    writeLine(beatsCsv_.get(), "time_s,bar,beat,section,bpm,count_in,fill,ending,section_start,key,layers\n");
+    writeLine(beatsCsv_.get(), "time_s,bar,beat,section,bpm,count_in,fill,ending,section_start,key,layers,intense,velocity_scale\n");
 
     framesWritten_ = onsetsWritten_ = clicksWritten_ = beatsWritten_ = 0;
     droppedBlocks_.store(0);
@@ -158,9 +158,10 @@ void SessionRecorder::writeBeat(const BeatTick& tick, std::int64_t sessionStart)
     if (!isOpen_ || tick.sampleTime < sessionStart)
         return;
     const auto flag = [&](std::uint8_t f) { return (tick.flags & f) != 0 ? 1 : 0; };
-    writeLine(beatsCsv_.get(), "%.5f,%d,%d,%d,%.3f,%d,%d,%d,%d,%s,%u\n", static_cast<double>(tick.sampleTime - sessionStart) / sampleRate_, tick.bar,
-              tick.beat, tick.section, static_cast<double>(tick.bpm), flag(BeatTick::countIn), flag(BeatTick::fill), flag(BeatTick::ending),
-              flag(BeatTick::sectionStart), Key::fromIndex(tick.key).shortName().c_str(), static_cast<unsigned>(tick.layers));
+    writeLine(beatsCsv_.get(), "%.5f,%d,%d,%d,%.3f,%d,%d,%d,%d,%s,%u,%d,%.3f\n", static_cast<double>(tick.sampleTime - sessionStart) / sampleRate_,
+              tick.bar, tick.beat, tick.section, static_cast<double>(tick.bpm), flag(BeatTick::countIn), flag(BeatTick::fill),
+              flag(BeatTick::ending), flag(BeatTick::sectionStart), Key::fromIndex(tick.key).shortName().c_str(),
+              static_cast<unsigned>(tick.layers), flag(BeatTick::intense), static_cast<double>(tick.velocityScale));
     ++beatsWritten_;
 }
 

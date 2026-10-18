@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace lb
@@ -30,11 +31,22 @@ struct Pattern
 struct Section
 {
     std::string name;
-    Pattern main;      // in C major
-    Pattern mainMinor; // in C minor; empty if the section has no minor version
-    Pattern fill;      // one bar, played into the next section or on request
+    Pattern main;             // in C major
+    Pattern mainMinor;        // in C minor; empty if the section has no minor version
+    Pattern mainIntense;      // a fuller version for loud singing, in C major; may be empty
+    Pattern mainIntenseMinor; // and in C minor
+    Pattern fill;             // one bar, played into the next section or on request
 
-    const Pattern& patternFor(bool minor) const noexcept { return minor && !mainMinor.notes.empty() ? mainMinor : main; }
+    // The pattern for the key's mode and the singer's intensity, falling back to what the
+    // section has.
+    const Pattern& patternFor(bool minor, bool intense = false) const noexcept
+    {
+        if (intense && minor && !mainIntenseMinor.notes.empty())
+            return mainIntenseMinor;
+        if (intense && !minor && !mainIntense.notes.empty())
+            return mainIntense;
+        return minor && !mainMinor.notes.empty() ? mainMinor : main;
+    }
 };
 
 // One step of a staged entry: from `bar` on, these layers play too.
@@ -49,6 +61,7 @@ struct EntryStage
 struct Style
 {
     std::string name;
+    std::string meter = "4/4"; // as written; in 6/8 the beat is the dotted quarter
     int beatsPerBar = 4;
     double defaultBpm = 100.0;
     double minBpm = 60.0;
@@ -69,6 +82,10 @@ struct Style
     std::vector<EntryStage> entryKeyUnknown;
     std::uint32_t afterKeyLockLayers = 0;
     int afterKeyLockEveryBars = 4;
+
+    // The style's own balance: a level in dB for an instrument ("drums", "bass", "keys",
+    // "pad"), on top of the band volume. A pad-led style turns its pad up.
+    std::vector<std::pair<std::string, float>> mixDb;
 
     int layerIndex(const std::string& name) const noexcept;
     std::uint32_t allLayers() const noexcept { return layers.size() >= 32 ? ~0u : (1u << layers.size()) - 1u; }

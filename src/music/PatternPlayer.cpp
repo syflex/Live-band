@@ -57,6 +57,14 @@ void PatternPlayer::setKey(const Key& key) noexcept
     }
 }
 
+void PatternPlayer::setDynamics(float velocityScale, bool intense) noexcept
+{
+    velocityScale_ = std::clamp(velocityScale, 0.5f, 1.5f);
+    pendingIntense_ = intense;
+    if (state_ == BandState::stopped || state_ == BandState::waiting)
+        intense_ = intense;
+}
+
 std::uint32_t PatternPlayer::arrangementFor(int bar) const noexcept
 {
     std::uint32_t mask = stageCount_ == 0 ? ~0u : 0u;
@@ -274,6 +282,14 @@ void PatternPlayer::enterBar(int bar) noexcept
         entryThisBar_ = true; // the drums come in: with the entry hits
     arrangementMask_ = arrangement;
 
+    // The intense variation starts on a downbeat, with the entry hits, and ends on one.
+    if (pendingIntense_ != intense_)
+    {
+        intense_ = pendingIntense_;
+        if (intense_ && bar > 0)
+            entryThisBar_ = true;
+    }
+
     barKind_ = bar == fillBar_ ? BarKind::fill : BarKind::main;
 }
 
@@ -352,6 +368,9 @@ void PatternPlayer::render(std::int64_t blockStart, int numSamples) noexcept
             tick.bpm = static_cast<float>(bpm());
             tick.key = static_cast<std::int8_t>(key_.index());
             tick.layers = barKind_ == BarKind::countIn ? 0u : activeLayers();
+            tick.velocityScale = velocityScale_;
+            if (intense_ && barKind_ != BarKind::countIn)
+                tick.flags |= BeatTick::intense;
             if (barKind_ == BarKind::countIn)
                 tick.flags |= BeatTick::countIn;
             if (barKind_ == BarKind::fill)
@@ -416,7 +435,7 @@ void PatternPlayer::playBarSegment(int bar, double segmentStart, double segmentE
     // The section's pattern, in the key's mode; in a fill bar, the fill replaces the fill
     // layers and the others carry on.
     const Section& section = style_->sections[static_cast<std::size_t>(section_)];
-    const Pattern& main = section.patternFor(minor_);
+    const Pattern& main = section.patternFor(minor_, intense_);
     const int bars = std::max(main.bars(style_->beatsPerBar), 1);
     const int barInPattern = ((bar - sectionStartBar_) % bars + bars) % bars;
     if (barKind_ == BarKind::fill)
@@ -486,7 +505,10 @@ void PatternPlayer::noteOn(double beat, const GrooveNote& note, bool ignoreMask)
         }
     }
 
-    push({ offset, sounding, note.velocity, note.layer, true });
+    // The singer's dynamics scale every note but the count-in's.
+    const auto velocity = ignoreMask ? note.velocity
+                                     : static_cast<std::uint8_t>(std::clamp(static_cast<int>(std::lround(note.velocity * velocityScale_)), 1, 127));
+    push({ offset, sounding, velocity, note.layer, true });
     if (pendingCount_ < maxPending)
         pending_[static_cast<std::size_t>(pendingCount_++)] = { beat + note.lengthBeats, sounding, note.layer };
     else

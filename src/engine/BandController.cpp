@@ -131,8 +131,33 @@ void BandController::analysisFrame(const AnalysisFrame& frame)
     const double rate = engine_.deviceInfo().sampleRate;
     if (rate <= 0.0)
         return;
-    keys_.process(static_cast<double>(frame.sampleTime) / rate, frame.isVoiced(), frame.midiPitch, frame.rmsDb);
+    const double seconds = static_cast<double>(frame.sampleTime) / rate;
+    keys_.process(seconds, frame.isVoiced(), frame.midiPitch, frame.rmsDb);
     sendKeyIfLocked();
+
+    // Two bars at the tempo playing now decide when the band turns intense or calms down.
+    const auto* style = engine_.style();
+    dynamics_.setHoldSeconds(2.0 * (style != nullptr ? style->beatsPerBar : 4) * 60.0 / bpm_);
+    dynamics_.process(seconds, frame.isVoiced(), frame.rmsDb);
+    sendDynamics(false);
+}
+
+void BandController::setDynamicsEnabled(bool enabled)
+{
+    dynamicsEnabled_ = enabled;
+    sendDynamics(true);
+}
+
+void BandController::sendDynamics(bool force)
+{
+    const auto scale = dynamicsEnabled_ ? static_cast<float>(dynamics_.velocityScale()) : 1.0f;
+    const bool intense = dynamicsEnabled_ && dynamics_.intense();
+    if (force || std::abs(scale - sentScale_) >= 0.01f || intense != sentIntense_)
+    {
+        sentScale_ = scale;
+        sentIntense_ = intense;
+        engine_.setBandDynamics(scale, intense);
+    }
 }
 
 void BandController::update()

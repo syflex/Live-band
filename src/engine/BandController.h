@@ -4,6 +4,7 @@
 #include "engine/AudioEngine.h"
 #include "music/KeyEstimator.h"
 #include "music/TapTempo.h"
+#include "music/VocalDynamics.h"
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
@@ -26,6 +27,9 @@ namespace lb
 // or listen afresh (the band keeps its key until the new one locks); move the key a semitone;
 // swap major and its relative minor. Once the band has stopped, the estimator listens afresh
 // for the next song.
+//
+// Dynamics: the same frames tell how loud the singer is against their own range; the band
+// plays harder or softer, and turns intense after two bars of loud singing (VocalDynamics).
 //
 // MIDI: any note-on, or the sustain pedal (CC 64) or CC 80 going down, is a tap; CC 81
 // starts and stops, CC 82 goes to the next section, CC 83 plays a fill, CC 84 and CC 85
@@ -82,15 +86,25 @@ public:
     void setKey(const Key& key);   // a key by hand, locked
     void setKeySettings(const KeyEstimator::Settings& settings) { keys_.setSettings(settings); }
 
+    // Following the singer's loudness; off, the band plays at its written velocities.
+    void setDynamicsEnabled(bool enabled);
+    bool dynamicsEnabled() const noexcept { return dynamicsEnabled_; }
+    const VocalDynamics& dynamics() const noexcept { return dynamics_; }
+
 private:
     double samplesPerBeat(double bpm) const;
     Key currentKey() const noexcept; // the locked key, or the best guess, or none
     void sendKeyIfLocked();
+    void sendDynamics(bool force);
 
     AudioEngine& engine_;
     TapTempo taps_;
     KeyEstimator keys_;
     Key sentKey_;
+    VocalDynamics dynamics_;
+    bool dynamicsEnabled_ = true;
+    float sentScale_ = 1.0f;
+    bool sentIntense_ = false;
     BandState lastState_ = BandState::stopped;
     double bpm_ = 100.0;
     bool pedalDown_ = false;

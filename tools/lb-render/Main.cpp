@@ -38,6 +38,8 @@ void printUsage()
         "  --key <key>         the key, known from the start, e.g. G, Em, F#m, Bb minor\n"
         "  --key-at <bar>:<key>  the key arrives in the middle of a bar, e.g. 2:Em (may repeat);\n"
         "                      without --key the band starts without one\n"
+        "  --intense <a>-<b>   as if the singer were loud in bars a to b-1 (counted from 0): the\n"
+        "                      intense variation and 12% harder velocities (may repeat)\n"
         "  --plan <list>       sections and bar counts, e.g. Verse:8,Chorus:8 (default: each section 4 bars)\n"
         "                      each change plays the outgoing section's fill in its last bar\n"
         "  --bpm <x>           tempo (default: the style's)\n"
@@ -72,6 +74,7 @@ struct Part
     double sumSquares = 0.0;
     double renderSeconds = 0.0; // time spent rendering, to compare the parts' cost
     int maxVoices = 0;
+    float styleGain = 1.0f;     // the style's mix for this part
 };
 
 bool parsePlan(const juce::String& text, const lb::Style& style, std::vector<Step>& plan, juce::String& error)
@@ -107,6 +110,7 @@ int main(int argc, char* argv[])
     parts[3].name = "pad";
     lb::Key startKey;
     std::vector<KeyChange> keyChanges;
+    std::vector<std::pair<int, int>> intenseBars;
     double bpm = 0.0, rate = 48000.0;
     float gainDb = 0.0f;
     int blockSize = 128;
@@ -145,6 +149,18 @@ int main(int argc, char* argv[])
         else if (arg == "--plan") planText = next();
         else if (arg == "--bpm") bpm = next().getDoubleValue();
         else if (arg == "--count-in") countIn = true;
+        else if (arg == "--intense")
+        {
+            const auto text = next();
+            const int from = text.upToFirstOccurrenceOf("-", false, false).getIntValue();
+            const int to = text.fromFirstOccurrenceOf("-", false, false).getIntValue();
+            if (!text.containsChar('-') || from < 0 || to <= from)
+            {
+                std::fprintf(stderr, "lb-render: %s is not a range of bars like 8-12\n", text.toRawUTF8());
+                return 2;
+            }
+            intenseBars.emplace_back(from, to);
+        }
         else if (arg == "--live") live = true;
         else if (arg == "--mute") muted.add(next());
         else if (arg == "--gain-db") gainDb = next().getFloatValue();
@@ -196,6 +212,11 @@ int main(int argc, char* argv[])
         if (!live)
             part.instrument->enableFreeWheeling(); // the best resampling; the samples are all in RAM either way
     }
+    for (const auto& [name, db] : style->mixDb)
+        for (auto& part : parts)
+            if (part.name == name)
+                part.styleGain = juce::Decibels::decibelsToGain(db);
+
     // Layers go to the part of the same name, the rest to the drum kit.
     std::vector<int> route(style->layers.size(), 0);
     for (std::size_t i = 0; i < style->layers.size(); ++i)
@@ -225,6 +246,25 @@ int main(int argc, char* argv[])
     const int bpb = style->beatsPerBar;
     const int countInBars = countIn ? 1 : 0;
     const auto downbeat = static_cast<std::int64_t>(std::llround(countInBars * bpb * spb)) + blockSize;
+    // Loud singing changes the band on the next downbeat: ask in the middle of the bar before.
+    struct DynamicsChange
+    {
+        std::int64_t sample;
+        bool intense;
+    };
+    std::vector<DynamicsChange> dynamicsChanges;
+    for (const auto& [from, to] : intenseBars)
+    {
+        dynamicsChanges.push_back({ downbeat + std::llround((from - 0.5) * bpb * spb), true });
+        dynamicsChanges.push_back({ downbeat + std::llround((to - 0.5) * bpb * spb), false });
+    }
+    std::sort(dynamicsChanges.begin(), dynamicsChanges.end(), [](const DynamicsChange& a, const DynamicsChange& b) { return a.sample < b.sample; });
+    std::size_t nextDynamics = 0;
+    while (nextDynamics < dynamicsChanges.size() && dynamicsChanges[nextDynamics].sample <= 0)
+    {
+        player.setDynamics(dynamicsChanges[nextDynamics].intense ? 1.12f : 1.0f, dynamicsChanges[nextDynamics].intense);
+        ++nextDynamics;
+    }
     player.start(downbeat, spb, plan.front().section, countInBars, startKey);
 
     // Requests go in at the start of each step's last bar, so its fill takes the whole bar.
@@ -278,6 +318,11 @@ int main(int argc, char* argv[])
         while (nextKeyChange < keyChanges.size()
                && downbeat + std::llround((keyChanges[nextKeyChange].bar + 0.5) * bpb * spb) <= t)
             player.setKey(keyChanges[nextKeyChange++].key);
+        while (nextDynamics < dynamicsChanges.size() && dynamicsChanges[nextDynamics].sample <= t)
+        {
+            player.setDynamics(dynamicsChanges[nextDynamics].intense ? 1.12f : 1.0f, dynamicsChanges[nextDynamics].intense);
+            ++nextDynamics;
+        }
         player.process(t, n,
             [&](const lb::PlayerNote& e) {
                 auto& instrument = parts[static_cast<std::size_t>(route[e.layer])].instrument;
@@ -307,7 +352,7 @@ int main(int argc, char* argv[])
             part.instrument->render(partBlock.getWritePointer(0), partBlock.getWritePointer(1), n);
             part.renderSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
             part.maxVoices = std::max(part.maxVoices, part.instrument->activeVoices());
-            partBlock.applyGain(0, n, gain);
+            partBlock.applyGain(0, n, gain * part.styleGain);
             for (int ch = 0; ch < 2; ++ch)
             {
                 const float* x = partBlock.getReadPointer(ch);

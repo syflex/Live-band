@@ -720,3 +720,67 @@ TEST_CASE("PatternPlayer reports the tempo it will start at while stopped, and t
     CHECK(player.state() == lb::BandState::stopped);
     CHECK(player.bpm() == Approx(110.0));
 }
+
+TEST_CASE("PatternPlayer scales velocities by the singer's dynamics, but not the count-in")
+{
+    const auto style = makeStyle();
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    player.setDynamics(1.1f, false);
+    player.start(96000, 24000.0, 0, 1);
+
+    std::vector<int> stickVelocities, kickVelocities;
+    std::int64_t t = 0;
+    while (t < 96000 + 4 * 24000)
+    {
+        player.process(t, 256,
+            [&](const lb::PlayerNote& e) {
+                if (e.on && e.note == stick)
+                    stickVelocities.push_back(e.velocity);
+                if (e.on && e.note == kick)
+                    kickVelocities.push_back(e.velocity);
+            },
+            [](const lb::BeatTick&) {});
+        t += 256;
+    }
+    REQUIRE(stickVelocities.size() == 4);
+    CHECK(stickVelocities.front() == 100); // the count-in as written
+    REQUIRE(!kickVelocities.empty());
+    CHECK(kickVelocities.front() == 110);  // 100, louder by 10%
+}
+
+TEST_CASE("PatternPlayer starts the intense variation on the next downbeat with a crash, and ends it on a downbeat")
+{
+    auto style = makeHarmonicStyle();
+    constexpr int tambourine = 54;
+    auto& a = style.sections[0];
+    a.mainIntense = a.main;
+    for (int bar = 0; bar < 2; ++bar)
+        a.mainIntense.notes.push_back(note(bar * 4.0 + 1.5, tambourine, 1));
+    a.mainIntense.sort();
+    REQUIRE(style.validate().empty());
+
+    lb::PatternPlayer player;
+    player.prepare(rate);
+    player.setStyle(&style);
+    constexpr double spb = 24000.0;
+    const auto bar = [&](double b) { return static_cast<std::int64_t>(b * 4 * spb); };
+    player.start(0, spb, 0, 0, key(0));
+    Recorder r;
+    std::int64_t t = 0;
+    r.run(player, t, bar(0.5));
+    player.setDynamics(1.0f, true); // loud for two bars: from the next downbeat
+    CHECK_FALSE(player.intense());
+    r.run(player, t, bar(2.5));
+    CHECK(player.intense());
+    player.setDynamics(1.0f, false);
+    r.run(player, t, bar(4));
+
+    CHECK(r.onsOf(tambourine) == std::vector<std::int64_t> { beatSample(0, spb, 5.5), beatSample(0, spb, 9.5) }); // bars 1 and 2 only
+    CHECK(r.onsOf(crash) == std::vector<std::int64_t> { 0, bar(1) });  // the start, and the intense downbeat; none when it ends
+    REQUIRE(r.ticks.size() == 16);
+    CHECK((r.ticks[0].flags & lb::BeatTick::intense) == 0);
+    CHECK((r.ticks[4].flags & lb::BeatTick::intense) != 0);
+    CHECK((r.ticks[12].flags & lb::BeatTick::intense) == 0);
+}
